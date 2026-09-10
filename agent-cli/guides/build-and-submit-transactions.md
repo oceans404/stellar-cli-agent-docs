@@ -77,14 +77,29 @@ file rather than discarding it; the hash you need for that check is only there.
 
 ## Inspection before signing
 
-`stellar tx hash` computes a transaction envelope's hash without signing or submitting it, also from
-stdin. Like `tx sign`, it needs no RPC connection. Use it to confirm you are about to sign the
-envelope you think you are:
+Base64 XDR is not human-readable. Showing someone `AAAAAgAAAABfEbrRS/av…` and calling it an
+approval step is not an approval step: they cannot see the destination, the amount, or whether
+anything has already signed it. Render the envelope first:
+
+```bash
+stellar tx new payment --source <SOURCE> --destination <ADDRESS> --amount <AMOUNT> \
+  --network <NETWORK> --build-only | stellar tx decode --output json-formatted
+```
+
+That prints `source_account`, `fee`, `seq_num`, `cond` (the timebounds, `"none"` if there are
+none), the `operations` array, and `signatures: []` on an unsigned envelope. Those fields are what
+a reviewer actually needs. `tx decode` needs no RPC connection.
+
+`stellar tx hash` then computes the envelope's hash without signing or submitting, also from stdin
+and also offline. Use it to confirm the thing you approved is the thing you are about to sign:
 
 ```bash
 stellar tx new payment --source <SOURCE> --destination <ADDRESS> --amount <AMOUNT> \
   --network <NETWORK> --build-only | stellar tx hash --network <NETWORK>
 ```
+
+The hash is unchanged by signing, so the same value should come back after `tx sign` and from the
+network on submit.
 
 ## Air-gapped signing
 
@@ -120,7 +135,9 @@ submit time, step 3. Anything else signing for the same source account in betwee
 agent or another one of your own commands, makes the envelope stale before it reaches step 3.
 Rebuild from step 1 and re-sign; there is no way to patch an existing envelope's sequence number.
 This is the natural failure mode of splitting build, sign, and send apart, and the air-gapped
-variant is most exposed to it, since minutes or hours can pass in between.
+variant is most exposed to it, since minutes or hours can pass in between. Elapsed time alone is
+not the cause: only another transaction from the same source account advances the sequence. A long
+delay is harmless unless the envelope carries timebounds, which `tx decode` shows as `cond`.
 
 ## Related pages
 

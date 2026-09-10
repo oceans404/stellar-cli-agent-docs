@@ -29,12 +29,12 @@ and keep `json-formatted` for output a person reads.
 | `tx decode` | `json`, `json-formatted` | `json` |
 | `tx encode` | `single-base64`, `single` | `single-base64` |
 | `network health`, `network info` | `text`, `json`, `json-formatted` | `text` |
-| `network settings` | `xdr`, `json`, `json-formatted` | `xdr` |
+| `network settings` | `xdr`, `json`, `json-formatted` | `json` |
 | `ledger latest`, `ledger fetch` | `text`, `json`, `json-formatted` | `text` |
 | `fees stats`, `fee-stats` (deprecated) | `text`, `json`, `json-formatted` | `text` |
 | `contract info interface`, `contract info meta`, `contract info env-meta` | `rust`, `text`, `xdr-base64`, `json`, `json-formatted` | `text` |
 | `contract read` | `string`, `json`, `xdr` (`json` advertised but broken, see below) | `string` |
-| `contract inspect` (deprecated) | `xdr-base64`, `xdr-base64-array`, `docs` | `xdr-base64` |
+| `contract inspect` (deprecated) | `xdr-base64`, `xdr-base64-array`, `docs` | `docs` |
 | `xdr decode` | `json`, `json-formatted`, `text`, `rust-debug`, `rust-debug-formatted` | `text` |
 | `xdr encode` | `single`, `single-base64`, `stream` | `single-base64` |
 | `events` | `pretty`, `plain`, `json`, `raw` | `pretty` |
@@ -46,6 +46,12 @@ Three things worth knowing beyond the table:
   A decoded `G...` address comes back as `{"public_key_ed25519": "<hex>"}`.
 - `tx fetch fee` defaults to `table`, not `json`, unlike every other `tx fetch` subcommand. Pass
   `--output json` explicitly if your agent needs to parse it.
+- **`json-formatted` is not JSON on any `tx fetch` subcommand.** All four prepend a human header to
+  stdout, `Transaction Status: SUCCESS` and `Transaction Ledger: <N>`, with ANSI color codes around
+  the status. `jq` fails on it while `--output json` parses cleanly, confirmed live on `result`,
+  `meta`, `fee`, and `events`. Elsewhere, on the `token` family and `ledger`, `json-formatted` is
+  ordinary indented JSON and parses. Use `json` whenever you intend to parse, and treat a parse
+  failure here as a formatting choice, never as a failed transaction.
 - None of the 22 `stellar tx new <operation>` commands has an `--output` flag at all, and a
   successful submission writes nothing to stdout. See
   [`tx new` has no machine-readable receipt](#tx-new-has-no-machine-readable-receipt) below.

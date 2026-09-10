@@ -175,6 +175,10 @@ Confirm what the CLI will now use, with secrets concealed:
 stellar env
 ```
 
+Saving defaults is a convenience for you at the terminal. An agent should still pass `--network` and
+`--source` explicitly on every command, because it cannot see what a previous session saved, and
+`stellar network use` writes that default machine-wide rather than per project or per shell.
+
 ## Step 6: Make your first transfer
 
 You need a destination. Create a second identity so you have a real address to send to:

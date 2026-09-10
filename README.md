@@ -8,7 +8,13 @@ humans already run, with agent-experience docs and skills layered on top.
 
 These pages are a proposal, not published Stellar documentation. Nothing here has been reviewed by
 SDF docs. The point of writing them in MetaMask's shape was to find out where Stellar has a story to
-tell and where it does not, and the answer is in `../MASTER-DIFF.md`.
+tell and where it does not, and the answer is in `MASTER-DIFF.md`, which is not published in this
+repository.
+
+The agent-facing skill package is a separate repository,
+[oceans404/stellar-cli-skills](https://github.com/oceans404/stellar-cli-skills). Nothing here
+references it by relative path; [agent-cli/skills.md](agent-cli/skills.md) maps the two onto each
+other.
 
 ## What is here
 
@@ -27,13 +33,15 @@ docs/
     │   ├── delegate-spending.md
     │   ├── sign-messages.md
     │   ├── build-and-submit-transactions.md
-    │   └── pay-for-apis-x402.md
+    │   ├── pay-for-apis-x402.md
+    │   └── usdt0-on-mainnet.md
     ├── reference/
     │   ├── architecture.md
     │   ├── authority-model.md
     │   ├── commands.md
     │   ├── output-and-errors.md
     │   └── supported-networks.md
+    ├── skills.md                     Map to the separate stellar-cli-skills repo
     └── troubleshooting.md
 ```
 
@@ -61,7 +69,8 @@ them, and inventing pages would have defeated the purpose of the exercise.
 
 ## Verification
 
-Every command in these pages was run. Captured output lives in `../research/`:
+Every command in these pages was run. Captured output lives in a `research/` directory that is not
+published in this repository:
 
 - `verified-token-transcripts.md` covers `stellar token transfer` and `balance` in all three output
   modes, the JSON error envelope, SEP-53 `message sign` and `verify`, and the
@@ -83,7 +92,8 @@ as of 28.0.0 plus the merged token subcommands, and will drift as soon as
 ## Review status
 
 The set was written by four writers and then reviewed for cross-page contradictions, unsupported
-claims, style violations, and broken links. Findings are in `../research/docs-review-findings.md`.
+claims, style violations, and broken links. Findings are in `research/docs-review-findings.md`,
+also unpublished.
 
 The review caught one substantive error worth naming: three pages and the master diff said
 `stellar tx new` covers 24 operations. The real count is 22, confirmed by counting
