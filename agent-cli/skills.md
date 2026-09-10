@@ -39,7 +39,7 @@ errors mean what.
 | [`references/token.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/token.md) | `transfer`, `balance`, `name`, `symbol`, `decimals`, and the four forms `--id` accepts | [Check balances and metadata](guides/check-balances-and-metadata.md) |
 | [`references/allowances.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/allowances.md) | `approve`, `allowance`, and the `transfer_from` spend path | [Delegate spending](guides/delegate-spending.md) |
 | [`references/transactions.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/transactions.md) | `tx new` operations, `--build-only`, `sign`, `send`, simulate | [Build and submit transactions](guides/build-and-submit-transactions.md) |
-| [`references/keys.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/keys.md) | Identity lifecycle, secure store, Ledger, watch-only | [CLI setup](cli-setup.md) |
+| [`references/keys.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/keys.md) | Identity lifecycle, secure store, Ledger, watch-only | [Quickstart](quickstart.md) |
 | [`references/networks.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/networks.md) | Network selection, `STELLAR_*` precedence, passphrases, mainnet RPC | [Supported networks](reference/supported-networks.md) |
 | [`references/authority.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/authority.md) | What bounds an agent, and what does not | [Authority model](reference/authority-model.md) |
 | [`references/errors.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/errors.md) | The typed error envelope, exit codes, retrying safely | [Output and errors](reference/output-and-errors.md) |
@@ -61,7 +61,7 @@ that should stop and ask the user, and a symptom-to-cause failure table.
 | [`workflows/acquire-an-asset.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/acquire-an-asset.md) | Add a trustline and take delivery of an asset | [USDT0 on mainnet](guides/usdt0-on-mainnet.md) |
 | [`workflows/air-gapped-signing.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/air-gapped-signing.md) | Split build, sign, and submit across machines | [Build and submit transactions](guides/build-and-submit-transactions.md) |
 | [`workflows/troubleshooting.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/troubleshooting.md) | Diagnose a failure from the symptom | [Troubleshooting](troubleshooting.md) |
-| [`workflows/teardown.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/teardown.md) | Retire an identity and its keys | [CLI setup](cli-setup.md) |
+| [`workflows/teardown.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/teardown.md) | Retire an identity and its keys | [Quickstart](quickstart.md) |
 
 ## Why both exist
 

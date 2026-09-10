@@ -15,11 +15,6 @@ const sidebar = {
     },
     {
       type: 'doc',
-      label: 'CLI setup',
-      id: 'cli-setup',
-    },
-    {
-      type: 'doc',
       label: 'Skills',
       id: 'skills',
     },

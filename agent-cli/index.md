@@ -124,8 +124,6 @@ works, `https://mainnet.sorobanrpc.com` is public and needs no signup.
 
 ## Where to go next
 
-- [CLI setup](cli-setup.md) is the same path command by command, for a terminal, a CI job, or an
-  agent with no skills installed.
 - [Skills](skills.md) is the skill package that teaches your agent to drive the CLI, one file per
   command family and one per task.
 - [Give your agent a spending limit](guides/delegate-spending.md) is the page to read before any

@@ -133,8 +133,6 @@ works, `https://mainnet.sorobanrpc.com` is public and needs no signup.
 
 ## Where to go next
 
-- [CLI setup](cli-setup.md) is the same path command by command, for a terminal, a CI job, or an
-  agent with no skills installed.
 - [Skills](skills.md) is the skill package that teaches your agent to drive the CLI, one file per
   command family and one per task.
 - [Give your agent a spending limit](guides/delegate-spending.md) is the page to read before any
@@ -153,62 +151,29 @@ SOURCE: agent-cli/quickstart.md
 
 ---
 description: Install the stellar CLI, connect it to your agent, fund a testnet key, and make your first agent-driven transfer.
-keywords: [Stellar, agent, quickstart, CLI, testnet, stellar token]
+keywords: [Stellar, agent, quickstart, CLI, testnet, stellar token, CI, secure store]
 ---
 
 # Quickstart
 
-**Skill:** `workflows/onboarding.md` in the [Stellar CLI skill package](skills.md) is the agent-facing version
-of this page.
+**Skill:** `workflows/onboarding.md` and `references/keys.md` in the
+[Stellar CLI skill package](skills.md) are the agent-facing version of this page.
 
 ## Before you start
 
-You need a terminal and an AI agent that supports MCP servers or skills (Claude Code, Codex, Cursor,
-VS Code, or similar).
+You need a terminal on macOS, Linux, WSL, or Windows, and an AI agent that supports MCP servers or
+skills (Claude Code, Codex, Cursor, VS Code, or similar). The CLI is a single static binary and
+needs no runtime. Contract development additionally needs Rust and the `wasm32v1-none` target, but
+nothing on this page does.
 
 Do this on testnet. Every command below targets testnet, and testnet funds are free from friendbot.
 Move to mainnet after you have watched your agent work.
 
 ## Step 1: Install the CLI
 
-{/*
-HIDDEN 2026-09-10. Release-install paths are commented out while the quickstart points at a main
-build, because `token name`, `symbol`, `decimals`, `approve`, and `allowance` are not in 28.0.0.
-Restore this block when those subcommands ship in a tagged release, and cut the section below.
-
-macOS, Linux, or WSL:
-
-```bash
-brew install stellar-cli
-```
-
-Or without Homebrew:
-
-```bash
-curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
-```
-
-Windows:
-
-```bash
-winget install --id Stellar.StellarCLI
-```
-
-Confirm the install and check your environment:
-
-```bash
-stellar --version
-stellar doctor
-```
-
-`stellar doctor` reports your CLI version, your Rust toolchain, whether your OS keychain and any
-Ledger device are available, and which configured networks are reachable. Run it first whenever
-something later fails.
-*/}
-
-### Build from main
-
-Build the CLI from `main`. There is no prebuilt main binary: GitHub publishes only tagged releases,
+Build from `main`. Five of the seven `stellar token` subcommands these docs use (`name`, `symbol`,
+`decimals`, `approve`, and `allowance`) are merged but not in the 28.0.0 release, so a release
+install cannot run them. There is no prebuilt main binary: GitHub publishes only tagged releases,
 crates.io has no prereleases, and `install.sh` resolves the latest release with no way to ask for a
 branch.
 
@@ -251,6 +216,35 @@ That prints help on a main build and `error: unrecognized subcommand 'decimals'`
 Call the main build by its full path in the steps that need it, and keep `stellar` pointing at the
 release for everything else.
 
+### Release installs
+
+Use these once the five subcommands ship, or now if you only need `token transfer`, `token balance`,
+and the `tx` family. Pin an explicit version in CI, because Homebrew and the install script both
+track latest, which makes a green build today a red build tomorrow. There is no official npm
+package.
+
+| Method | Command |
+|---|---|
+| Homebrew | `brew install stellar-cli` |
+| Install script | `curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh \| sh` |
+| winget | `winget install --id Stellar.StellarCLI --version 28.0.0` |
+| Cargo | `cargo install --locked stellar-cli@28.0.0` |
+| Docker | `docker run --rm -it -v "$(pwd)":/source stellar/stellar-cli:28.0.0 version` |
+| GitHub Actions | `- uses: stellar/stellar-cli@v28.0.0` |
+
+### Check the environment
+
+```bash
+stellar doctor
+```
+
+`stellar doctor` is the triage command for everything that follows. It reports your CLI version,
+Rust toolchain and `wasm32v1-none` target, wasm optimizer availability, whether your OS secure store
+and any Ledger device are usable, whether a container engine is present, your config and data
+directory paths, your XDR version, and the reachability and protocol version of every configured
+network. It does not check account funding, API keys, or contract health. Run it first whenever
+something later fails.
+
 ## Step 2: Connect your agent
 
 Add the Raven MCP server so your agent can search Stellar's documentation and ecosystem while it
@@ -288,14 +282,52 @@ stellar keys generate agent-1 --network testnet --fund
 ```
 
 Pass `--fund` or the account is created locally but never funded on the network, and later commands
-fail with a trustline error that does not mention funding. To store the seed phrase in your OS
-keychain instead of a file, add `--secure-store`.
+fail with a trustline error that does not mention funding.
 
 Check the address and balance:
 
 ```bash
 stellar keys address agent-1
 stellar token balance --id native --account agent-1 --network testnet --decimal
+```
+
+### Where the key is stored
+
+Without `--secure-store`, identities are written in plaintext to
+`~/.config/stellar/identity/<NAME>.toml`. Add the flag to keep the seed phrase in your OS keychain
+instead:
+
+```bash
+stellar keys generate agent-1 --network testnet --fund --secure-store
+```
+
+Secure store supports seed phrases only, not raw secret keys.
+
+A `--secure-store` identity's `.toml` file holds no key material, only `entry_name` and
+`public_key`. The seed phrase itself lives in the OS keychain, and the CLI needs this file's pointer
+to reach it. The file looks harmless because it contains nothing secret, which is exactly what makes
+it dangerous: deleting it does not delete the key, but it does strand the account, since the CLI can
+no longer find where the key lives. Remove a secure-store identity with
+`stellar keys rm <NAME> --force`, which purges both the file and the keychain entry, never by
+deleting the file by hand. If you have already deleted the file, recreate it with the same
+`entry_name` and `public_key` and the CLI can sign again.
+
+There is no `stellar keys rename`. To rename an identity, move its file in
+`~/.config/stellar/identity/` and confirm with `stellar keys address` that the public key is
+unchanged.
+
+### Hardware and watch-only identities
+
+For a hardware-backed identity:
+
+```bash
+stellar keys add agent-1 --ledger
+```
+
+For a watch-only identity that can read but never sign:
+
+```bash
+stellar keys add treasury --public-key <ADDRESS>
 ```
 
 ## Step 4: Choose how your agent holds funds
@@ -315,22 +347,36 @@ option protects you from.
 
 ## Step 5: Set your defaults
 
-Save the network and identity so your agent does not have to pass them on every command:
+This step is for you at the terminal, not for your agent.
 
 ```bash
 stellar network use testnet
 stellar keys use agent-1
 ```
 
-Confirm what the CLI will now use, with secrets concealed:
+Every command that takes `--network` or `--source` now falls back to these. Confirm what the CLI
+will use, with secret-bearing values concealed:
 
 ```bash
 stellar env
 ```
 
-Saving defaults is a convenience for you at the terminal. An agent should still pass `--network` and
-`--source` explicitly on every command, because it cannot see what a previous session saved, and
-`stellar network use` writes that default machine-wide rather than per project or per shell.
+Pass `--reveal` to print secrets. The flag was added in 27.0.0, which is also the first release
+where concealment is dependable. See [Troubleshooting](troubleshooting.md) if you are on an older
+install.
+
+An agent should skip this step and keep passing `--network` and `--source` explicitly on every
+command, because it cannot see what a previous session saved, and `stellar network use` writes that
+default machine-wide rather than per project or per shell.
+
+In CI, prefer environment variables over saved defaults, because they are explicit in the job
+definition:
+
+```bash
+export STELLAR_NETWORK=testnet
+export STELLAR_ACCOUNT=agent-1
+export STELLAR_NO_CACHE=true
+```
 
 ## Step 6: Make your first transfer
 
@@ -367,242 +413,16 @@ TX=$(stellar token transfer --id native --from agent-1 --to <ADDRESS> --amount 1
 stellar tx fetch result --hash "$TX" --network testnet
 ```
 
-For machine-readable output on either command, add `--output json`.
+For machine-readable output on either command, add `--output json`. Coverage is not uniform across
+the CLI, and only the `stellar token` family returns typed errors. See
+[Output and errors](reference/output-and-errors.md) before you build error handling.
 
 ## Next steps
 
 - [Send tokens](guides/send-tokens.md)
 - [Delegate spending](guides/delegate-spending.md)
 - [Authority model](reference/authority-model.md)
-- [CLI setup](cli-setup.md)
-
-================================================================================
-SOURCE: agent-cli/cli-setup.md
-================================================================================
-
----
-description: Complete Stellar CLI setup for an agent command by command, for a terminal, a CI job, or an agent with no skills installed.
-keywords: [Stellar, CLI, setup, agent, CI, testnet, identity]
----
-
-# CLI setup
-
-The same path as [Quickstart](quickstart.md), written as commands with no agent in the loop. Use
-this page when you are automating in CI, or when your agent has no skills or MCP server installed
-and needs a complete reference it can follow.
-
-**Skill:** `workflows/onboarding.md` and `references/keys.md` in the [Stellar CLI skill package](skills.md) is the agent-facing version
-of this page.
-
-## Prerequisites
-
-A terminal on macOS, Linux, WSL, or Windows. Nothing else. The CLI is a single static binary and
-needs no runtime.
-
-Contract development additionally needs Rust 1.84 or later and the `wasm32v1-none` target. Nothing
-on this page requires either.
-
-## 1. Install the CLI
-
-Homebrew (macOS, Linux, WSL):
-
-```bash
-brew install stellar-cli
-```
-
-Install script (macOS, Linux, WSL):
-
-```bash
-curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
-```
-
-winget (Windows):
-
-```bash
-winget install --id Stellar.StellarCLI --version 28.0.0
-```
-
-Cargo, from source:
-
-```bash
-cargo install --locked stellar-cli@28.0.0
-```
-
-Docker:
-
-```bash
-docker run --rm -it -v "$(pwd)":/source stellar/stellar-cli:28.0.0 version
-```
-
-GitHub Actions:
-
-```yaml
-- uses: stellar/stellar-cli@v28.0.0
-```
-
-Pin an explicit version in CI. Homebrew and the install script both track latest, which makes a
-green build today a red build tomorrow.
-
-There is no official npm package for the CLI.
-
-## 2. Verify the environment
-
-```bash
-stellar --version
-stellar doctor
-```
-
-`stellar doctor` is the triage command for everything that follows. It reports your CLI version,
-your Rust toolchain and `wasm32v1-none` target, wasm optimizer availability, whether your OS secure
-store and any Ledger device are usable, whether a container engine is present, your config and data
-directory paths, your XDR version, and the reachability and protocol version of every configured
-network.
-
-It does not check account funding, API keys, or contract health.
-
-## 3. Create an identity
-
-```bash
-stellar keys generate agent-1 --network testnet --fund
-```
-
-`--fund` calls friendbot. Without it the key is saved locally and the account does not exist on the
-network, and the first command that needs the account fails with a trustline error that does not
-mention funding.
-
-To keep the seed phrase in your OS keychain rather than a plaintext file:
-
-```bash
-stellar keys generate agent-1 --network testnet --fund --secure-store
-```
-
-Secure store supports seed phrases only, not raw secret keys. Without it, identities are written to
-`~/.config/stellar/identity/<NAME>.toml`.
-
-A `--secure-store` identity's `.toml` file holds no key material, only `entry_name` and
-`public_key`. The seed phrase itself lives in the OS keychain, and the CLI needs this file's pointer
-to reach it. The file looks harmless because it contains nothing secret, which is exactly what makes
-it dangerous: deleting it does not delete the key, but it does strand the account, since the CLI can
-no longer find where the key lives. Remove a secure-store identity with
-`stellar keys rm <NAME> --force`, which purges both the file and the keychain entry, never by
-deleting the file by hand. If you have already deleted the file, recreate it with the same
-`entry_name` and `public_key` and the CLI can sign again.
-
-For a hardware-backed identity:
-
-```bash
-stellar keys add agent-1 --ledger
-```
-
-For a watch-only identity that can read but never sign:
-
-```bash
-stellar keys add treasury --public-key <ADDRESS>
-```
-
-Confirm and inspect:
-
-```bash
-stellar keys ls
-stellar keys address agent-1
-```
-
-There is no `stellar keys rename`. To rename an identity, move its file in
-`~/.config/stellar/identity/` and confirm with `stellar keys address` that the public key is
-unchanged.
-
-## 4. Set defaults
-
-```bash
-stellar network use testnet
-stellar keys use agent-1
-```
-
-Every command that takes `--network` or `--source` now falls back to these. Print the resolved
-configuration, with secret-bearing values concealed:
-
-```bash
-stellar env
-```
-
-Pass `--reveal` to print secrets. The flag was added in 27.0.0, which is also the first release
-where concealment is dependable. See [Troubleshooting](troubleshooting.md) if you are on an older
-install.
-
-In CI, prefer environment variables over saved defaults, because they are explicit in the job
-definition:
-
-```bash
-export STELLAR_NETWORK=testnet
-export STELLAR_ACCOUNT=agent-1
-export STELLAR_NO_CACHE=true
-```
-
-## 5. Read before you write
-
-Reads are simulations. They need no source account, no key, and no funded account, so run them first
-as a smoke test:
-
-```bash
-stellar token balance --id native --account agent-1 --network testnet --decimal
-stellar token symbol --id <CODE:ISSUER> --network testnet
-stellar token decimals --id <CODE:ISSUER> --network testnet
-```
-
-## 6. Send a transfer
-
-```bash
-stellar token transfer \
-  --id native \
-  --from agent-1 \
-  --to <ADDRESS> \
-  --amount 10000000 \
-  --network testnet
-```
-
-`--amount` is in the token's smallest unit. Read the scale with `stellar token decimals` rather than
-assuming 7.
-
-For a non-native asset, the destination needs a trustline first:
-
-```bash
-stellar tx new change-trust --source <DESTINATION_IDENTITY> --line <CODE:ISSUER> --network testnet
-```
-
-## 7. Make output machine-readable
-
-```bash
-stellar --quiet token balance --id native --account agent-1 --network testnet --output json
-```
-
-`--quiet` suppresses informational logging on stderr. `--output json` gives a single-line object on
-stdout. Together they give you output you can pipe into a parser without filtering.
-
-Coverage is not uniform across the CLI, and only the `stellar token` family returns typed errors.
-See [Output and errors](reference/output-and-errors.md) before you build error handling.
-
-## 8. Build without submitting
-
-Add `--build-only` to any `tx new <OPERATION>` or `contract` command to stop before signing and
-submitting:
-
-```bash
-stellar tx new payment --source agent-1 --destination <ADDRESS> --amount 10000000 --build-only
-```
-
-`token transfer` and `token approve` do not accept `--build-only` at all. For a build-only payment
-handoff, use `stellar tx new payment --build-only` as above, not `token transfer`.
-
-`--build-only` still contacts RPC to read the source account's sequence number, so it needs network
-access and a funded source account. What it skips is signing and submitting, which is what makes it
-safe to let an agent prepare work a human approves. See
-[Build and submit transactions](guides/build-and-submit-transactions.md).
-
-## Next steps
-
-- [Authority model](reference/authority-model.md)
 - [Commands reference](reference/commands.md)
-- [Troubleshooting](troubleshooting.md)
 
 ================================================================================
 SOURCE: agent-cli/skills.md
@@ -649,7 +469,7 @@ errors mean what.
 | [`references/token.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/token.md) | `transfer`, `balance`, `name`, `symbol`, `decimals`, and the four forms `--id` accepts | [Check balances and metadata](guides/check-balances-and-metadata.md) |
 | [`references/allowances.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/allowances.md) | `approve`, `allowance`, and the `transfer_from` spend path | [Delegate spending](guides/delegate-spending.md) |
 | [`references/transactions.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/transactions.md) | `tx new` operations, `--build-only`, `sign`, `send`, simulate | [Build and submit transactions](guides/build-and-submit-transactions.md) |
-| [`references/keys.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/keys.md) | Identity lifecycle, secure store, Ledger, watch-only | [CLI setup](cli-setup.md) |
+| [`references/keys.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/keys.md) | Identity lifecycle, secure store, Ledger, watch-only | [Quickstart](quickstart.md) |
 | [`references/networks.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/networks.md) | Network selection, `STELLAR_*` precedence, passphrases, mainnet RPC | [Supported networks](reference/supported-networks.md) |
 | [`references/authority.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/authority.md) | What bounds an agent, and what does not | [Authority model](reference/authority-model.md) |
 | [`references/errors.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/errors.md) | The typed error envelope, exit codes, retrying safely | [Output and errors](reference/output-and-errors.md) |
@@ -671,7 +491,7 @@ that should stop and ask the user, and a symptom-to-cause failure table.
 | [`workflows/acquire-an-asset.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/acquire-an-asset.md) | Add a trustline and take delivery of an asset | [USDT0 on mainnet](guides/usdt0-on-mainnet.md) |
 | [`workflows/air-gapped-signing.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/air-gapped-signing.md) | Split build, sign, and submit across machines | [Build and submit transactions](guides/build-and-submit-transactions.md) |
 | [`workflows/troubleshooting.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/troubleshooting.md) | Diagnose a failure from the symptom | [Troubleshooting](troubleshooting.md) |
-| [`workflows/teardown.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/teardown.md) | Retire an identity and its keys | [CLI setup](cli-setup.md) |
+| [`workflows/teardown.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/teardown.md) | Retire an identity and its keys | [Quickstart](quickstart.md) |
 
 ## Why both exist
 
@@ -851,6 +671,15 @@ Without `--decimal`, `balance` returns the token's smallest unit as an integer s
 `--decimal`, it divides by the token's own `decimals` and returns a human-readable number. Use the
 raw form whenever the value is going back into `--amount` on `transfer` or `approve`. Use
 `--decimal` only for display.
+
+## A native balance is not the spendable amount
+
+`stellar token balance --id native` reports the account's full ledger balance. Stellar holds part
+of that as the base reserve plus a reserve per subentry, so the spendable figure is lower. Sending
+the entire reported balance fails at simulation with `Error(Contract, #10)`,
+`"resulting balance is not within the allowed range"`, confirmed on testnet. That same code also
+covers an ordinary insufficient balance, so treat it as "this account cannot part with that
+amount" rather than "this balance is wrong". Leave reserve and fee headroom.
 
 ## What these reads cannot do
 
@@ -3354,9 +3183,15 @@ a submit failure and retries has just resubmitted a transaction that already suc
 confirmed double-spend, not a hypothetical one. A failed parse is not evidence the transaction
 failed.
 
+One exception to the recovery route, and it is the mode most agents run in: `token transfer
+--output json` writes **nothing at all to stderr**, on success and on failure alike, measured on
+testnet. There is no `ℹ️  Signing transaction:` line to fall back on, so the hash exists only in
+stdout's `tx_hash`. If that stdout is empty or unparseable, you have no local record of the hash.
+Do not retry. Re-read both balances, and go to Horizon if you need the hash itself.
+
 Redirect stderr separately, never merged, whenever you intend to parse stdout. Capture it to a file
-rather than discarding it, because the hash you need to confirm on-chain state lives on that stderr
-line:
+rather than discarding it, because for `tx send` the hash you need to confirm on-chain state lives
+on that stderr line:
 
 ```bash
 stellar tx send --network <NET> 2>send.stderr
@@ -3965,4 +3800,3 @@ stellar keys secret <NAME>
 - [Output and errors](reference/output-and-errors.md)
 - [Quickstart](quickstart.md)
 - [Authority model](reference/authority-model.md)
-

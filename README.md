@@ -26,7 +26,6 @@ docs/
 └── agent-cli/
     ├── index.md                      Overview
     ├── quickstart.md                 Agent-driven onboarding
-    ├── cli-setup.md                  Terminal and CI onboarding
     ├── guides/
     │   ├── send-tokens.md
     │   ├── check-balances-and-metadata.md
