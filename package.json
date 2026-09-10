@@ -1,10 +1,12 @@
 {
-  "name": "agent-cli-docs-site",
+  "name": "stellar-cli-agent-docs",
   "private": true,
   "scripts": {
-    "start": "docusaurus start",
+    "prebuild": "mkdir -p static && cp llms-agent-cli.txt llms-agent-cli-full.txt static/",
+    "start": "npm run prebuild && docusaurus start",
     "build": "docusaurus build",
-    "serve": "docusaurus serve"
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
   },
   "dependencies": {
     "@docusaurus/core": "^3.7.0",
