@@ -1,0 +1,100 @@
+---
+description: Read balances and token metadata with `stellar token balance`, `name`, `symbol`, and `decimals`, no key required.
+keywords: [Stellar, agent, balance, token metadata, decimals, CLI]
+---
+
+# Check balances and metadata
+
+`stellar token balance`, `name`, `symbol`, and `decimals` are reads, not transactions. They need no
+key, no funded account, and no signing, because they run as simulations rather than signed
+operations. That is true on testnet from a fresh install. Mainnet is not: the built-in `mainnet`
+entry ships as a placeholder rather than a real RPC URL, so these commands fail on mainnet with
+`Invalid URL Bring Your Own: ...` until you add a real endpoint:
+
+```bash
+stellar network add mainnet \
+  --rpc-url <YOUR_MAINNET_RPC_URL> \
+  --network-passphrase "Public Global Stellar Network ; September 2015"
+```
+
+Stellar's [RPC providers page](https://developers.stellar.org/docs/data/apis/rpc/providers) lists the endpoints to choose from. The public
+`https://mainnet.sorobanrpc.com` needs no signup and is enough for reads.
+
+USDC's testnet id is `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`. The examples
+below use it.
+
+**Skill:** `references/token.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
+of this page.
+
+## Ask your agent
+
+```
+What are the decimals and symbol for USDC on Stellar testnet, and what does agent-1 hold of it?
+```
+
+## Steps
+
+1. Identify an unfamiliar asset before you touch it:
+
+   ```bash
+   stellar token name --id <TOKEN> --network <NETWORK>
+   stellar token symbol --id <TOKEN> --network <NETWORK>
+   stellar token decimals --id <TOKEN> --network <NETWORK>
+   ```
+
+2. Read a balance:
+
+   ```bash
+   stellar token balance --id <TOKEN> --account <ACCOUNT> --network <NETWORK>
+   ```
+
+3. Add `--decimal` for a human-readable amount, or leave it off for the raw smallest-unit value you
+   would feed back into `--amount` on a transfer:
+
+   ```bash
+   stellar token balance --id <TOKEN> --account <ACCOUNT> --network <NETWORK> --decimal
+   ```
+
+## Two output quirks
+
+For a Stellar Asset Contract, `name` returns the full `CODE:ISSUER` string, not a friendly name.
+For the native asset, both `name` and `symbol` return the literal string `native`. Neither is a
+bug. There is no separate metadata registry backing these reads, so the contract answers with what
+it actually stores.
+
+## Raw units versus decimal
+
+Without `--decimal`, `balance` returns the token's smallest unit as an integer string. With
+`--decimal`, it divides by the token's own `decimals` and returns a human-readable number. Use the
+raw form whenever the value is going back into `--amount` on `transfer` or `approve`. Use
+`--decimal` only for display.
+
+## Machine-readable output
+
+`--output json` wraps each read in a single-key object named after the command, for example
+`{"decimals":7}` or `{"balance":"13000000"}`. `--output json-formatted` is the same object,
+pretty-printed.
+
+## Common pitfalls
+
+A bad token id fails with a `config`-typed error, not a balance of zero:
+
+```
+$ stellar token balance --id nonexistent_bad_id --account agent-1 --network testnet --output json
+{"error":{"type":"config","message":"contract not found: nonexistent_bad_id"}}
+```
+
+Check the error type before trusting a balance of zero as real.
+
+A balance read against an account that does not exist on the network at all fails differently from
+one against an existing account with no trustline. The first is `Error(Contract, #6)`,
+`"account entry is missing"`. The second, for a classic asset, is `Error(Contract, #13)`,
+`"trustline entry is missing for account"`. Both arrive as `type:"invoke"`, and only the message
+text tells them apart.
+
+## Related pages
+
+- [Send tokens](send-tokens.md)
+- [Delegate spending](delegate-spending.md)
+- [Quickstart](../quickstart.md)
+- [Output and errors](../reference/output-and-errors.md)

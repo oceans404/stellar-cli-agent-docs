@@ -1,0 +1,35 @@
+# Stellar CLI for Agents
+
+> Documentation links for the `stellar` command-line interface used by AI
+> agents to read balances, move tokens, delegate spending, sign messages, and submit transactions on
+> Stellar. Keys are held locally and the CLI applies no spend policy of its own, so read the
+> authority model before giving an agent a funded key.
+
+## Setup
+
+- [Overview](agent-cli/index.md): Why an agent needs its own wallet, what your agent can do, what the CLI does not bound for you, and where to start.
+- [Quickstart](agent-cli/quickstart.md): Install the CLI, connect your agent to the Raven MCP server, fund a testnet key, and make a first transfer.
+- [CLI setup](agent-cli/cli-setup.md): The same path command by command, for a terminal, a CI job, or an agent with no skills installed.
+- [Skills](agent-cli/skills.md): The skill package that drives the CLI, one reference per command family and one workflow per task, with the docs page each maps to.
+
+## Guides
+
+- [Send tokens](agent-cli/guides/send-tokens.md): Move the native asset or a classic asset with `stellar token transfer`.
+- [Check balances and metadata](agent-cli/guides/check-balances-and-metadata.md): Read balances, name, symbol, and decimals with no key and no configuration.
+- [Delegate spending](agent-cli/guides/delegate-spending.md): Grant a capped, expiring, revocable allowance with `stellar token approve` and audit it with `stellar token allowance`.
+- [Sign messages](agent-cli/guides/sign-messages.md): Prove control of a key offline with SEP-53 `stellar message sign` and `verify`.
+- [Build and submit transactions](agent-cli/guides/build-and-submit-transactions.md): Compose `--build-only`, `tx sign`, and `tx send` into a pipeline, including air-gapped signing.
+- [Pay for APIs with x402](agent-cli/guides/pay-for-apis-x402.md): Pay x402-protected APIs with USDC through `@x402/stellar`, using the CLI only for the identity and the SEP-41 settlement rail.
+- [USDT0 on mainnet](agent-cli/guides/usdt0-on-mainnet.md): Addresses, trustlines, the clawback flags, and the thin on-DEX liquidity to know about before moving size.
+
+## Reference
+
+- [Architecture](agent-cli/reference/architecture.md): Local state, configuration precedence, read and write paths, composition, token resolution, and how agents connect.
+- [Authority model](agent-cli/reference/authority-model.md): What bounds an agent's spending today, what the CLI does not protect you from, and the on-chain policy options and their maturity.
+- [Commands reference](agent-cli/reference/commands.md): Every command and flag, marked read-only or state-mutating.
+- [Output and errors](agent-cli/reference/output-and-errors.md): Which commands support `--output json`, the typed error envelope on the `token` family, and exit-code conventions.
+- [Supported networks](agent-cli/reference/supported-networks.md): mainnet, testnet, futurenet, and local, with passphrases and funding methods.
+
+## Help
+
+- [Troubleshooting](agent-cli/troubleshooting.md): `stellar doctor` first, then symptom, cause, and fix for the common failures.
