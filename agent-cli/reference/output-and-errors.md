@@ -252,9 +252,15 @@ a submit failure and retries has just resubmitted a transaction that already suc
 confirmed double-spend, not a hypothetical one. A failed parse is not evidence the transaction
 failed.
 
+One exception to the recovery route, and it is the mode most agents run in: `token transfer
+--output json` writes **nothing at all to stderr**, on success and on failure alike, measured on
+testnet. There is no `ℹ️  Signing transaction:` line to fall back on, so the hash exists only in
+stdout's `tx_hash`. If that stdout is empty or unparseable, you have no local record of the hash.
+Do not retry. Re-read both balances, and go to Horizon if you need the hash itself.
+
 Redirect stderr separately, never merged, whenever you intend to parse stdout. Capture it to a file
-rather than discarding it, because the hash you need to confirm on-chain state lives on that stderr
-line:
+rather than discarding it, because for `tx send` the hash you need to confirm on-chain state lives
+on that stderr line:
 
 ```bash
 stellar tx send --network <NET> 2>send.stderr

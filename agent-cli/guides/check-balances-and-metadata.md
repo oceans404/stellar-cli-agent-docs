@@ -69,6 +69,15 @@ Without `--decimal`, `balance` returns the token's smallest unit as an integer s
 raw form whenever the value is going back into `--amount` on `transfer` or `approve`. Use
 `--decimal` only for display.
 
+## A native balance is not the spendable amount
+
+`stellar token balance --id native` reports the account's full ledger balance. Stellar holds part
+of that as the base reserve plus a reserve per subentry, so the spendable figure is lower. Sending
+the entire reported balance fails at simulation with `Error(Contract, #10)`,
+`"resulting balance is not within the allowed range"`, confirmed on testnet. That same code also
+covers an ordinary insufficient balance, so treat it as "this account cannot part with that
+amount" rather than "this balance is wrong". Leave reserve and fee headroom.
+
 ## What these reads cannot do
 
 There is no command that lists what an account holds. Every read names one token, so "what does
