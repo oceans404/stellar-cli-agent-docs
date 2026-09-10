@@ -69,11 +69,26 @@ Without `--decimal`, `balance` returns the token's smallest unit as an integer s
 raw form whenever the value is going back into `--amount` on `transfer` or `approve`. Use
 `--decimal` only for display.
 
+## What these reads cannot do
+
+There is no command that lists what an account holds. Every read names one token, so "what does
+this account hold" is not a question this CLI answers; enumerating an account's trustlines means
+querying Horizon. Reframe the request as "how much of these specific tokens", and get the token
+list from the user.
+
+`--account` accepts a `G…` address, a `C…` contract address, or a saved alias, so a contract's
+holdings are readable the same way an account's are.
+
 ## Machine-readable output
 
-`--output json` wraps each read in a single-key object named after the command, for example
-`{"decimals":7}` or `{"balance":"13000000"}`. `--output json-formatted` is the same object,
-pretty-printed.
+`--output json` wraps each read in an object keyed by the command, for example `{"decimals":7}` or
+`{"balance":"99999988251"}`. `--output json-formatted` is the same object, pretty-printed.
+
+It is not always a single key. `--decimal` adds a second one:
+`token balance --decimal --output json` returns `{"balance":"9999.9988251","decimals":7}`, and
+`token allowance --decimal --output json` returns `{"allowance":"0.00001","decimals":7}`. A parser
+that assumes one key, counts keys, or reaches for the first entry breaks the moment someone adds
+`--decimal`.
 
 ## Common pitfalls
 

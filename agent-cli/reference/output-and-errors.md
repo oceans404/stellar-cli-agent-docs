@@ -129,7 +129,7 @@ Known `type` values, from the `token` command source:
 | `contract_not_found` | Defined in the `token` command source, but not reached through the `token` commands in testing. A nonexistent contract address returned `config` instead (see above). Do not rely on this type to detect a missing contract. |
 | `config` | A resolution or configuration problem: an unparseable `--id`, an unknown alias, or a well-formed but nonexistent `C…` contract address. This, not `contract_not_found`, is the type you actually get for a missing contract, with `message: "contract not found: <ID>"`. |
 | `network` | The RPC endpoint could not be reached or returned a network-level failure. |
-| `invalid_address` | A `--from`, `--to`, or `--spender` value is not a valid address. |
+| `invalid_address` | A `--from`, `--to`, `--spender`, or `--account` value is not a valid address. `--account` is the one that matters for reads: an unknown alias returns `Account alias "<NAME>" not Found`. |
 | `invoke` | The contract call itself failed during simulation or submission. Check the `message` field's embedded diagnostic event log for the actual cause. Two you will meet often: `Error(Contract, #13)`, `"trustline entry is missing for account"`, for a classic asset with no trustline or no account at all; and `Error(Contract, #6)`, `"account entry is missing"`, for the native asset with no account at all. Both are `invoke`, so you cannot branch on `type` alone to tell them apart. |
 | `internal` | An unexpected CLI-internal error. |
 
@@ -187,12 +187,22 @@ A mutating `token` command in JSON mode returns a fixed two-field object:
 `token approve` returns the same shape. `result` is `null` on these calls; it is not populated with
 contract return data by `transfer` or `approve`.
 
-A read-only `token` command in JSON mode returns a single-key object named after the command:
+A read-only `token` command in JSON mode returns an object keyed by the command:
 
 ```json
-{"balance":"13000000"}
+{"balance":"99999988251"}
 {"decimals":7}
 {"allowance":"250000000"}
+{"name":"native"}
+{"symbol":"native"}
+```
+
+Adding `--decimal` adds a second key rather than replacing the first, so do not write a parser that
+assumes exactly one:
+
+```json
+{"balance":"9999.9988251","decimals":7}
+{"allowance":"0.00001","decimals":7}
 ```
 
 In text mode, the same reads return a bare value with no wrapping:
@@ -214,7 +224,9 @@ zero bytes on stderr, confirmed live. Use `--quiet` only when the exit code is a
 need to know why something failed, omit `--quiet` and capture stderr instead.
 
 The `token` family is safe either way, because its error is JSON on stdout, not stderr, and
-`--quiet` does not touch stdout. Combine `--quiet` with `--output json` on `token` commands for
+`--quiet` does not touch stdout. In JSON mode the `token` family writes nothing to stderr at all,
+measured on both a successful and a failing `token transfer`, so `--quiet` is redundant there
+rather than necessary. Combine `--quiet` with `--output json` on `token` commands for
 clean, parseable stdout with no informational logging (`ℹ️  Simulating transaction…`,
 `🌎 Sending transaction…`, `✅ Transaction submitted successfully!`, the `🔗` explorer link) mixed
 in. Do not reach for `--quiet` as a default on every command; it is a tradeoff, not a free clean-up.

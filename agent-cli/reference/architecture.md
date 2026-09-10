@@ -53,6 +53,10 @@ export STELLAR_ACCOUNT=agent-1
 export STELLAR_NO_CACHE=true
 ```
 
+The cache those variables control holds simulations and transactions, which is what `--no-cache`'s
+own help says. It does not cache balance results, so reads are always live and a stale balance is
+not a failure mode to design around.
+
 `stellar env` prints what the CLI resolved, with secret-bearing values concealed. Pass `--reveal` to
 print them.
 

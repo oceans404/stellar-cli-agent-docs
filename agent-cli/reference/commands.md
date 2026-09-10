@@ -376,7 +376,7 @@ Read-only.
 | Command | Description |
 |---|---|
 | `tx fetch --hash <HASH>` | Fetches the transaction envelope. `--output` is `json`, `json-formatted`, or `xdr`. Default `json`. |
-| `tx fetch result --hash <HASH>` | Fetches the transaction result. Same `--output` set as above. |
+| `tx fetch result --hash <HASH>` | Fetches the transaction result. Same `--output` set as above. `json-formatted` prepends a `Transaction Status` / `Transaction Ledger` header to stdout and does not parse as JSON; use `json` to parse. |
 | `tx fetch meta --hash <HASH>` | Fetches the transaction meta. Same `--output` set. |
 | `tx fetch fee --hash <HASH>` | Fetches fee information. `--output` is `json`, `json-formatted`, or `table`. Default `table`, unlike the other three. |
 | `tx fetch events --hash <HASH>` | Fetches the transaction's events. `--output` is `json`, `json-formatted`, or `text`. Default `json`. |

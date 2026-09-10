@@ -101,6 +101,13 @@ stellar tx new payment --source <SOURCE> --destination <ADDRESS> --amount <AMOUN
 The hash is unchanged by signing, so the same value should come back after `tx sign` and from the
 network on submit.
 
+Check the destination while you are still at the build stage. A native `payment` cannot create an
+account, so paying an address that has never been funded fails at submit with
+`TxFailed` / `OpInner(Payment(NoDestination))` and exit code 1. In this flow that is the worst place
+to find out, because a human has already reviewed and approved the envelope. `stellar token balance
+--id native --account <ADDRESS> --output json` answers it for free, and `tx new create-account` is
+the operation for an account that does not exist yet.
+
 ## Air-gapped signing
 
 Only `tx sign` and `tx hash` are genuinely offline. `--build-only` still needs RPC to read the source
