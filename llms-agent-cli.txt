@@ -15,7 +15,7 @@
 
 - [Send tokens](agent-cli/guides/send-tokens.md): Move the native asset or a classic asset with `stellar token transfer`.
 - [Check balances and metadata](agent-cli/guides/check-balances-and-metadata.md): Read balances, name, symbol, and decimals with no key and no configuration.
-- [Delegate spending](agent-cli/guides/delegate-spending.md): Grant a capped, expiring, revocable allowance with `stellar token approve` and audit it with `stellar token allowance`.
+- [Delegate spending](agent-cli/guides/delegate-spending.md): How much your agent can spend without you, and the worst case if it goes wrong. Only an allowance truly delegates; a co-signed vault and a zero-XLM agent are approval workflows that interrupt you every transaction; a claimable balance is time-boxed funding. Start with a dedicated funded account.
 - [Sign messages](agent-cli/guides/sign-messages.md): Prove control of a key offline with SEP-53 `stellar message sign` and `verify`.
 - [Build and submit transactions](agent-cli/guides/build-and-submit-transactions.md): Compose `--build-only`, `tx sign`, and `tx send` into a pipeline, including air-gapped signing.
 - [Pay for APIs with x402](agent-cli/guides/pay-for-apis-x402.md): Pay x402-protected APIs with USDC through `@x402/stellar`, using the CLI only for the identity and the SEP-41 settlement rail.

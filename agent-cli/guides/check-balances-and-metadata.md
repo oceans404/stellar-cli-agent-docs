@@ -5,6 +5,12 @@ keywords: [Stellar, agent, balance, token metadata, decimals, CLI]
 
 # Check balances and metadata
 
+Ask what an account holds, and what an unfamiliar token actually is, before touching it.
+
+Nothing here moves money or needs a key, so these are the safest commands in the CLI and the right
+first thing to run when you suspect something is misconfigured. They are also the only commands
+that work from a completely fresh install with nothing set up.
+
 `stellar token balance`, `name`, `symbol`, and `decimals` are reads, not transactions. They need no
 key, no funded account, and no signing, because they run as simulations rather than signed
 operations. That is true on testnet from a fresh install. Mainnet is not: the built-in `mainnet`

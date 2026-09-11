@@ -5,6 +5,12 @@ keywords: [Stellar, USDT0, mainnet, USDT, LayerZero, OFT, trustline, clawback, l
 
 # USDT0 on mainnet
 
+Get USDT0 into an account on mainnet, hold it, and move some of it.
+
+This is the only page here that spends real money, and the commands are not the hard part. The hard
+part is that there is very little USDT0 on Stellar to buy, so acquiring it is where people lose
+money on price.
+
 USDT0 is USDT with a unified supply, bridged to Stellar by a LayerZero OFT contract that mints and
 burns it here. It exists on mainnet only. There is no testnet USDT0, so every command on this page
 moves real money.

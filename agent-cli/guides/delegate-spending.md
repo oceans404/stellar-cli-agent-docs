@@ -1,14 +1,54 @@
 ---
-description: Grant and audit capped, expiring spend authority with `stellar token approve` and `stellar token allowance`.
-keywords: [Stellar, agent, allowance, approve, delegated spending, authority]
+description: 'How much can your agent spend without you, and what is the worst case if it goes wrong. A funded account, an allowance, a co-signed vault, a zero-XLM agent, and a self-expiring grant, compared honestly.'
+keywords: [Stellar, agent, allowance, approve, delegated spending, authority, multisig, sponsored reserves, fee bump, claimable balance]
 ---
 
 # Delegate spending
 
+Give an agent the ability to spend some of your money, deciding in advance how much it can take
+and whether it needs you present to take it.
+
+Two questions settle which setup you want, and neither is "which feature should I use". Can the
+agent act without you, and what is the worst case if it goes wrong.
+
+| What you want | Do this | Worst case | Human in the loop |
+|---|---|---|---|
+| Agent spends freely, small stakes | Its own funded account | That balance | Never |
+| Agent spends freely, capped, from your money | [An allowance](#pattern-2-an-allowance) | The cap, until the deadline | Never |
+| You approve each move | [A co-signed vault](#pattern-1-a-co-signed-vault) | Nothing moves without you | Every transaction |
+| You approve each move, agent holds nothing | [A zero-XLM agent](#pattern-3-an-agent-with-no-xlm) | Nothing moves without you | Every transaction |
+| Fund it for a limited time | [A self-expiring grant](#pattern-4-a-self-expiring-grant) | What you granted | Once |
+
+Start with the first row. A dedicated account, funded with an amount you would be annoyed but not
+hurt to lose, is one command, needs nothing from this page, and caps your worst case at that
+balance:
+
+```bash
+stellar keys generate agent-1 --network testnet --fund
+```
+
+The rest of this page is for when the money outgrows that.
+
+Be clear about what the other rows actually are. **Only the allowance delegates.** It is the one
+pattern where the agent moves your money on its own, inside a bound the network enforces while you
+are asleep.
+
+A co-signed vault and a zero-XLM agent are approval workflows, not delegation. They differ only in
+which thing you sign: the vault makes you co-sign the envelope, the fee bump makes you pay for it.
+Both reduce the agent to a proposer, and both interrupt you every single time. That is a real
+control and often the right one, but it is not autonomy, and a vault does not hold your money
+hostage either: your key alone still moves everything in it.
+
+A self-expiring grant is funding. The deadline bounds how long the offer stands, not what happens
+afterward. Once claimed, the money is the agent's outright.
+
+None of them gives a rolling window, a destination allow-list, or a spend rule per time period.
+[What this does not give you](#what-this-does-not-give-you) is honest about that.
+
 `stellar token approve` grants an address a capped, expiring allowance to move a token out of your
 account. `stellar token allowance` reads what is currently granted. Together they are the closest
-thing the Stellar CLI has to a spend limit, and the network enforces the cap, not the agent's good
-behavior.
+thing the Stellar CLI has to a per-token spend limit, and the network enforces the cap, not the
+agent's good behavior.
 
 This page's examples use testnet USDC, `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`,
 which is 7 decimals. 25 USDC is `250000000`.
@@ -22,14 +62,125 @@ ever holding `treasury`'s key.
 **Skill:** `workflows/delegate-spending.md` and `workflows/audit-and-revoke-allowances.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
 of this page.
 
-## Ask your agent
+## Pattern 1: A co-signed vault
+
+Add the agent's key to a funded account as a signer whose weight sits below the account's payment
+threshold. The agent can build and sign a transaction from that vault, and nothing moves until your
+key signs too. This is the only pattern here that bounds *who must agree*, and it covers every
+asset and every operation rather than one token.
+
+```bash
+stellar tx new set-options --source <VAULT> --signer <AGENT_ADDRESS> --signer-weight 1 \
+  --master-weight 2 --low-threshold 2 --med-threshold 2 --high-threshold 2 --network <NETWORK>
+```
+
+The agent proposes with `--build-only` and signs with its own key. The result is one base64 string.
+You sign that same string and submit it:
+
+```bash
+# the agent
+stellar tx new payment --source <VAULT_ADDRESS> --destination <DESTINATION> \
+  --amount <SMALLEST_UNIT> --network <NETWORK> --build-only \
+  | stellar tx sign --sign-with-key <AGENT> --network <NETWORK> > proposal.xdr
+
+# you
+stellar tx sign --sign-with-key <VAULT> --network <NETWORK> < proposal.xdr \
+  | stellar tx send --network <NETWORK>
+```
+
+Prove the bound before you trust it. Submit the agent's proposal without your signature:
+
+```bash
+stellar tx send --network <NETWORK> < proposal.xdr
+```
+
+If the agent submits with only its own signature, the network rejects it with `TxBadAuth`.
+Measured on testnet: no fee was charged and the vault's sequence number was unchanged afterward, so
+the same envelope can still be co-signed and sent. Co-signed, the identical transaction succeeded.
+
+Match on `TxBadAuth`. It is a single greppable line, and it is a transaction-level signature-weight
+failure.
+
+Do not match on `TxFailed([OpBadAuth])`. That is a paraphrase, not output: the operation-level
+failure prints as a multi-line Rust debug dump, so match on `OpBadAuth` alone.
+
+```
+❌ error: transaction submission failed: TxFailed(
+    VecM(
+        [
+            OpBadAuth,
+        ],
+    ),
+)
+```
+
+You reach the operation-level check only after the transaction-level one passes, which happens when
+a threshold is at or below the signer's weight. At or below, not below: the default low threshold
+of 1 against a weight-1 agent is exactly equal, and that is the most likely misconfiguration on
+this page.
+
+The agent cannot promote itself. Raising a weight or changing a threshold is a high-threshold
+`set-options`, and it is rejected either way. On a correctly configured vault it fails with
+`TxBadAuth`; leave the low threshold at 1 and the same attempt fails with the `OpBadAuth` dump
+instead. The block holds in both cases, only the string you match on changes.
+
+Read the account back rather than assuming the setup took:
+
+```bash
+stellar ledger entry fetch account --account <VAULT> --network <NETWORK> --output json
+```
+
+`thresholds` comes back as four hex bytes in the order master, low, medium, high. A correctly
+configured vault reads `02020202`; `02010202` means the low threshold is still 1. Four identical
+bytes prove nothing about the order, so to see it, set four distinct values: master 5, low 2,
+medium 3, high 4 reads back `05020304`.
+
+Read `signers` alongside it, and know what it omits. **The master key is not in that array.** Its
+weight is the first byte of `thresholds`. A correct setup lists only the agent:
+
+```json
+"thresholds":"02020202","signers":[{"key":"G…AGENT","weight":1}]
+```
+
+An audit that answers "who can sign this vault" from `signers` alone therefore names the agent and
+misses the key that can drain it. After revoking, the array is `[]` on an account its owner still
+fully controls.
+
+**This is not two of two.** Your key alone still moves everything: with master weight 2 against a
+threshold of 2 you are unilateral, and the agent's weight-1 signature is never required for
+anything. It is a proposal mechanism, not a co-signature, and losing the agent's key costs you no
+access to the vault.
+
+Set `--low-threshold 2` deliberately. At the default of 1 an agent with weight 1 can run
+low-threshold operations alone, which includes `bump-sequence`, `claim-claimable-balance`, and
+`allow-trust`. Measured: with low threshold 1, a weight-1 agent bumped the vault's sequence by
+itself. The CLI exposes `allow-trust` as `set-trustline-flags`, so there is no `allow-trust`
+command to go looking for.
+
+Revoke with one command, effective at the next ledger:
+
+```bash
+stellar tx new set-options --source <VAULT> --signer <AGENT_ADDRESS> --signer-weight 0 --network <NETWORK>
+```
+
+Revoking changes the workflow, and the co-signing pipeline above stops working. Once the agent's
+weight is 0 its signature matches no signer, and an envelope carrying it is rejected with
+`TxBadAuthExtra` even when you co-sign correctly. Measured on testnet. After revoking, stop routing
+through `tx sign --sign-with-key <AGENT>`: rebuild the transaction and sign it with your key alone.
+
+This bounds who agrees, not how much. A co-signed payment for the vault's entire balance is still a
+valid payment, so pair it with an allowance when you need both.
+
+## Pattern 2: An allowance
+
+### Ask your agent
 
 ```
 Grant agent-1 an allowance of 25 USDC from treasury on testnet USDC, expiring in about a day, then
 show me the allowance.
 ```
 
-## Steps
+### Steps
 
 1. Read the current ledger. `--expiration-ledger` is a ledger number, not a duration, so you need
    this first:
@@ -42,9 +193,12 @@ show me the allowance.
    5 seconds, so a day is about 17280 ledgers. There is no `--expires-in` flag. You compute the
    target ledger yourself: current ledger plus that count.
 
-   Write the number down. `approve` echoes it back as `live_until_ledger` in its event line, and
-   that is the only time the CLI will ever show it to you: `token allowance` returns the amount
-   alone, with no way to read an existing grant's expiration.
+   Write the number down. `approve` echoes it back as `live_until_ledger` in its event line, which
+   is the cheapest place to read it. That line goes to stderr, so a `$(…)` capture drops it even in
+   text mode, and `--output json` removes it entirely, leaving only
+   `{"tx_hash":"…","result":null}`.
+
+   If you did not record it, see [Reading an allowance back](#reading-an-allowance-back).
 
 3. Grant the allowance:
 
@@ -53,18 +207,30 @@ show me the allowance.
      --amount <AMOUNT> --expiration-ledger <LEDGER> --network <NETWORK>
    ```
 
-4. Confirm what is actually granted. Do not trust what you just sent:
+4. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
+   stored, and check the spender address character by character against the one you meant:
+   `approve` to an address that was never funded succeeds, and the read-back then confirms the
+   typo as though it were correct.
 
    ```bash
    stellar token allowance --id <TOKEN> --from <OWNER> --spender <SPENDER> --network <NETWORK>
    ```
 
-## Spending the allowance
+### Spending the allowance
+
+The spender needs its own funded account. It is the `--source` of the draw, so it pays that
+transaction's fee even though the tokens come from the owner.
+
+The spender does **not** need a trustline for the asset. Measured on testnet: a spender with no
+trustline completed a `transfer_from`. The `--to` destination is what needs one, exactly as it
+would to receive an ordinary payment, and a missing one there fails with `Error(Contract, #13)`.
+The two are easy to conflate because the simplest test has the agent draw to itself, which makes
+it both.
 
 `stellar token` has no verb that draws on an allowance. There is no `transfer-from`, and running
 `stellar token transfer --from <OWNER> --sign-with-key <SPENDER>` fails with
 `{"error":{"type":"invoke","message":"...TxBadAuth..."}}`, because the transfer itself is still
-authorized by the owner, not the spender.
+authorized by the owner, not the spender. That is the error once the trustline exists.
 
 The Stellar Asset Contract itself exposes `transfer_from`, authorized by the spender. `--to` needs a
 trustline for the asset, exactly like an ordinary transfer; without one this fails with
@@ -80,6 +246,24 @@ submitted. The diagnostic names both numbers, remaining first and requested seco
 
 That is the cap doing its job. It is enforced by the network, not by the agent's restraint, which is
 the whole reason to use an allowance instead of trusting a spending limit you wrote into a prompt.
+
+`Error(Contract, #9)` is not unique to an over-cap draw. The same code comes back from `approve`
+when the expiration ledger is already in the past, with
+`data:["live_until must be >= ledger sequence", 4000000, 4610092]`. Branch on the message, never on
+the code alone, or a stale ledger read looks like an agent overspending.
+
+An over-cap draw also has a second, costlier shape. Everything above assumes the draw is simulated
+before submission, which is what catches it for free. A transaction signed while the allowance was
+still good and submitted after it was revoked skips that check and fails at consensus instead:
+
+```
+❌ Error event: [{"symbol":"error"},{"error":{"contract":9}}] = {"vec":[{"string":"not enough allowance to spend"},{"i128":"0"},{"i128":"100000000"}]}
+fee_charged: 17315, result: TxFailed([OpInner(InvokeHostFunction(Trapped))])
+```
+
+None of the strings above appear in that output, and the fee is charged. Match on `Trapped` plus
+the error event, and treat a fee-charged failure as proof the network refused rather than the
+client.
 
 `contract invoke --id` is stricter than `token --id`: it takes only a `C...` contract address or an
 alias, not `CODE:ISSUER`, so resolve the address first. `contract id asset` is a pure read and needs
@@ -99,6 +283,41 @@ stellar contract invoke --id "$SAC" --source <SPENDER> --network <NETWORK> \
 transferred. Read it back with `stellar token allowance` afterward, the same way you would after
 granting it.
 
+### Reading an allowance back
+
+`token allowance` returns the amount alone, but the expiry is not lost. Two ways to read it back,
+both measured on testnet.
+
+From live state, with no transaction hash. The allowance lives in the token contract's temporary
+storage under a key of `["Allowance", {from, spender}]`, so encode that key and read it:
+
+```bash
+KEY='{"vec":[{"symbol":"Allowance"},{"map":[
+  {"key":{"symbol":"from"},"val":{"address":"<OWNER_ADDRESS>"}},
+  {"key":{"symbol":"spender"},"val":{"address":"<SPENDER_ADDRESS>"}}]}]}'
+
+stellar contract read --id <SAC> --durability temporary --network <NETWORK> \
+  --key-xdr "$(echo "$KEY" | stellar xdr encode --type ScVal --output single-base64)"
+```
+
+That returns the amount and the deadline together, for example
+`{"amount":"80000000","live_until_ledger":4627378}`. Note `--durability temporary`: an allowance is
+not persistent storage, and once the deadline passes the entry is evicted and this returns
+`no matching contract data entries were found`.
+
+From the grant transaction, if you have or can find its hash:
+
+```bash
+stellar tx fetch events --hash <APPROVE_HASH> --network <NETWORK> --output json
+```
+
+The deadline is the second element of the contract event's data vector,
+`contract_events[0][0].body.v0.data.vec[1].u32`. This works even when the `approve` itself ran with
+`--output json`.
+
+Do not reach for `ledger entry fetch contract-data`: it ignores `--durability temporary` and hands
+back the persistent entry instead, so it will never show you an allowance.
+
 ## Amount replaces, it does not add
 
 `--amount` on `approve` replaces the existing allowance. It does not add to it. Granting 10 after
@@ -106,15 +325,215 @@ already granting 25 leaves the allowance at 10, not 35. The safe update pattern 
 read the current allowance with `allowance`, decide the new total you want outstanding, then call
 `approve` with that total.
 
-## Revocation
+### Revocation
 
 Revoke by approving zero: `--amount 0 --expiration-ledger 0`. Zero is the one case where the
 expiration ledger is allowed to be in the past, because a zero allowance has nothing left to expire.
 
-## The spender can be a contract
+### The spender can be a contract
 
 `--spender` accepts a `C...` contract address as well as a `G...` account. A policy contract that
 enforces its own rules on top of the allowance can sit in the spender position.
+
+## Pattern 3: An agent with no XLM
+
+An agent account that holds no XLM cannot pay a transaction fee, so it cannot submit anything by
+itself. Create it with sponsored reserves, give it the asset it will spend or an allowance to draw
+on, and pay each transaction's fee yourself with a fee bump. Stopping the agent means declining to
+sign the next one.
+
+Generate the agent's key without `--fund`. The sponsorship transaction below is what creates the
+account, and friendbot funding it first would defeat the point: the agent must hold no XLM. This is
+the one place where the [Quickstart](../quickstart.md)'s `keys generate --fund` is the wrong move.
+
+Create the account with a zero starting balance. The three operations must ride in one transaction,
+and the sponsored account signs for the `end` operation. `tx op add` does not raise the fee as it
+adds operations, so set the fee for three operations up front:
+
+```bash
+stellar tx new begin-sponsoring-future-reserves --source <TREASURY> --sponsored-id <AGENT_ADDRESS> \
+  --network <NETWORK> --build-only --inclusion-fee 300 \
+  | stellar tx op add create-account --source <TREASURY> --destination <AGENT_ADDRESS> --starting-balance 0 --network <NETWORK> \
+  | stellar tx op add end-sponsoring-future-reserves --source <TREASURY> --op-source <AGENT_ADDRESS> --network <NETWORK> \
+  | stellar tx sign --sign-with-key <TREASURY> --network <NETWORK> \
+  | stellar tx sign --sign-with-key <AGENT> --network <NETWORK> \
+  | stellar tx send --network <NETWORK>
+```
+
+Without `--inclusion-fee 300` this fails with `TxInsufficientFee`.
+
+Prove the account is really sponsored, not merely empty. A zero balance alone says nothing:
+
+```bash
+stellar ledger entry fetch account --account <AGENT> --network <NETWORK> --output json
+```
+
+`balance` is `0`, and `ext` carries `num_sponsored` for the entries the treasury covers. Horizon
+reports the same account with a `sponsor` field naming the treasury.
+
+Now give the agent something to spend. It needs a sponsored trustline for the asset, created by the
+same sandwich with `change-trust` as the middle operation:
+
+```bash
+stellar tx new begin-sponsoring-future-reserves --source <TREASURY> --sponsored-id <AGENT_ADDRESS> \
+  --network <NETWORK> --build-only --inclusion-fee 300 \
+  | stellar tx op add change-trust --source <TREASURY> --op-source <AGENT_ADDRESS> --line <CODE:ISSUER> --network <NETWORK> \
+  | stellar tx op add end-sponsoring-future-reserves --source <TREASURY> --op-source <AGENT_ADDRESS> --network <NETWORK> \
+  | stellar tx sign --sign-with-key <TREASURY> --network <NETWORK> \
+  | stellar tx sign --sign-with-key <AGENT> --network <NETWORK> \
+  | stellar tx send --network <NETWORK>
+```
+
+Then either send the agent the asset outright with `token transfer`, or grant it an allowance on
+the treasury's balance with [Pattern 2](#pattern-2-an-allowance). The allowance is the stronger
+pairing: the agent holds nothing at all, and each draw needs a fee bump you sign.
+
+The agent builds and signs as usual. Submitting alone fails with `TxInsufficientBalance`, so it
+signs to a file instead of piping to `tx send`:
+
+```bash
+stellar tx new payment --source <AGENT> --destination <DESTINATION> --asset <CODE:ISSUER> \
+  --amount <SMALLEST_UNIT> --network <NETWORK> --build-only \
+  | stellar tx sign --sign-with-key <AGENT> --network <NETWORK> > agent-signed.xdr
+```
+
+`--asset` is not optional here even though the CLI defaults it. The default is `native`, and a
+native payment from this agent cannot succeed by construction: it holds no XLM. That attempt is
+worse than a no-op. The transaction-level check passes, your fee bump is charged, and the inner
+transaction fails with `Payment(Underfunded)` inside a `TxFeeBumpInnerFailed` dump that reads as
+though the fee bump itself were broken, sending you to debug the Python and the sponsorship, both
+of which are fine. A zero-XLM agent spends assets, never XLM.
+
+There is no fee-bump command, so wrap that signed envelope through `tx decode` and `tx encode`.
+Set the treasury address in a shell variable first: a `<PLACEHOLDER>` written directly after
+`python3 -` lands where shell redirection goes and fails as a syntax error before Python ever
+runs.
+
+```bash
+TREASURY_ADDRESS=<TREASURY_ADDRESS>
+
+stellar tx decode --output json < agent-signed.xdr > inner.json
+python3 - "$TREASURY_ADDRESS" <<'EOF'
+import json, sys
+inner = json.load(open("inner.json"))
+fee = int(inner["tx"]["tx"]["fee"]) + 100
+fb = {"tx_fee_bump": {"tx": {"fee_source": sys.argv[1], "fee": str(fee),
+      "inner_tx": {"tx": inner["tx"]}, "ext": "v0"}, "signatures": []}}
+json.dump(fb, open("bump.json", "w"))
+EOF
+stellar tx encode --input json < bump.json \
+  | stellar tx sign --sign-with-key <TREASURY> --network <NETWORK> \
+  | stellar tx send --network <NETWORK>
+```
+
+`tx sign` recognizes the fee bump and logs `Signing fee bump transaction`. The result carries
+`"fee_bump": true`, the inner transaction's `fee_charged` is `0`, and the agent's XLM balance stays
+at zero. Measured on testnet: a sponsored agent holding `0.0000000` XLM submitted both a classic
+asset payment and a Soroban `transfer_from` this way, with the treasury as `fee_account` on both.
+Classic here means a `CODE:ISSUER` asset. Native XLM is the one thing this agent can never send.
+
+Soroban works too, which is how a zero-XLM agent spends an allowance. `contract invoke
+--build-only` writes an unsimulated envelope with no resource fee and no authorization entries, so
+pipe it through `tx simulate` before signing:
+
+```bash
+stellar contract invoke --id <SAC> --source <AGENT> --network <NETWORK> --build-only \
+  -- transfer_from --spender <AGENT_ADDRESS> --from <OWNER_ADDRESS> --to <DESTINATION> --amount <SMALLEST_UNIT> \
+  | stellar tx simulate --source <AGENT> --network <NETWORK> \
+  | stellar tx sign --sign-with-key <AGENT> --network <NETWORK> > agent-signed.xdr
+```
+
+Do not plan to revoke the sponsorship as a kill switch:
+
+```bash
+stellar tx new revoke-sponsorship --source <TREASURY> --account-id <AGENT_ADDRESS> --network <NETWORK>
+```
+
+`--account-id` is required for every form; add `--asset <CODE:ISSUER>` to target the trustline
+rather than the account entry. `revoke-sponsorship` against an account
+with no XLM fails, because the account cannot take over a reserve it cannot pay. Measured on
+testnet, it fails for both the account entry and the trustline. Unlike the other errors in this
+section, this one is not a single greppable line: it prints a multi-line Rust debug dump with
+`RevokeSponsorship(` and `LowReserve,` on separate lines, so match on `LowReserve` alone. The fee
+bump you decline to sign is the control.
+
+## Pattern 4: A self-expiring grant
+
+A claimable balance parks funds the agent may claim until a deadline. Add yourself as a second,
+unconditional claimant, or an unclaimed balance is stranded once the deadline passes.
+
+The claimant needs a trustline for the asset before it can claim, exactly as it would to receive
+an ordinary payment. Without one the claim fails with `ClaimClaimableBalance(NoTrust)` after the
+grant already exists. Native XLM needs none.
+
+Build, sign, and send as a pipeline. `tx new create-claimable-balance` on its own submits the
+transaction but prints nothing to stdout, and the balance id you need comes back in `tx send`'s
+result:
+
+```bash
+stellar tx new create-claimable-balance --source <TREASURY> --asset <CODE:ISSUER> --amount <SMALLEST_UNIT> \
+  --claimant '<AGENT_ADDRESS>:{"before_absolute_time":"<UNIX_SECONDS>"}' \
+  --claimant <TREASURY_ADDRESS> \
+  --network <NETWORK> --build-only \
+  | stellar tx sign --sign-with-key <TREASURY> --network <NETWORK> \
+  | stellar tx send --network <NETWORK>
+```
+
+Write the treasury claimant as a bare address, with no predicate. `{"unconditional":true}` is
+rejected with `Invalid predicate JSON: invalid type: boolean true, expected unit`; the forms that
+parse are `{"unconditional":null}` and `"unconditional"`.
+
+The id is buried in `tx send`'s result rather than printed on its own line. Pull it out with:
+
+```bash
+… | stellar tx send --network <NETWORK> \
+  | jq -r '.result.result.tx_success[0].op_inner.create_claimable_balance.success'
+```
+
+If you lose that output, `stellar tx fetch result --hash <HASH> --network <NETWORK> --output json`
+returns the same value from the transaction later.
+
+The id arrives in three incompatible encodings, and the claim command takes only one. `tx send`
+returns a `B…` strkey. Horizon reports 72 hex characters, which are eight leading zeros followed by
+the 64 that matter. `claim-claimable-balance` accepts the 64-character hex and nothing else: it
+rejects the `B…` with `invalid hex for balance-id: B…` and rejects the 72-hex too.
+`ledger entry fetch claimable-balance --id` has the same restriction, while
+`clawback-claimable-balance` accepts all three.
+
+`strkey decode` is the bridge from what you were handed to what the claim command wants:
+
+```bash
+stellar strkey decode <B_STRKEY> | jq -r '.claimable_balance.v0'
+```
+
+That prints the 64-hex. Coming from Horizon instead, drop the first 8 characters of its 72.
+
+```bash
+stellar tx new claim-claimable-balance --source <AGENT> --balance-id <64_HEX> --network <NETWORK>
+```
+
+This bounds how long the offer stands, not what the agent does with the money afterward. Once
+claimed, the funds are the agent's outright. Use it to fund an agent for a bounded window, not as a
+spend cap.
+
+The deadline binds the agent, not you. An unconditional treasury claimant is unconditional in time
+too, so you can take the grant back seconds after creating it, not only after it expires. Measured
+on testnet: a grant with a 24-hour window was reclaimed by the treasury immediately.
+
+Nothing happens automatically at the deadline. The entry stays on the ledger, the agent's claim
+starts failing with `ClaimClaimableBalance(CannotClaim)` and is still charged its fee, and the
+treasury reclaims with the same command against a different `--source`. Without that second
+claimant the entry is stranded: it sits there consuming a reserve with nobody able to claim it.
+
+## If you issue the asset
+
+For an asset you issue, the trustline is yours to switch off. Set `--set-required`,
+`--set-revocable`, and `--set-clawback-enabled` on the issuer once. After that each agent's
+trustline needs `set-trustline-flags --set-authorize` before it can hold the asset,
+`--clear-authorize` freezes it, and `clawback` takes the balance back. Measured on testnet: a frozen
+agent's next payment failed with `Payment(SrcNotAuthorized)`, and a clawback of 50 units of the
+agent's balance succeeded. All of it works with the agent's key still in the agent's hands, and
+none of it applies to USDC or any asset someone else issues.
 
 ## What this does not give you
 
@@ -123,6 +542,22 @@ no rolling time window, no per-counterparty rule beyond that single spender, no 
 destinations the spender can pay out to, and no fiat-denominated limit. It has no notion of an
 agent session either: an allowance outlives however long you intended the agent to run, until its
 expiration ledger passes or you revoke it.
+
+None of the other three patterns closes those gaps. A co-signed vault makes you approve each
+spend, which is a stronger control and a slower one; it does not encode a rule you can walk away
+from. Nothing here gives you a policy engine.
+
+Two things look like controls and are not. **Muxed accounts** (`M…`) are labels on one key, not
+sub-identities: a payment to or from one works, and the same secret signs for every mux id, so
+they record which agent a payment was for and bound nothing. The CLI does not round-trip one
+either: `keys add --public-key <M_ADDRESS>` saves it, and `keys address` reads back the underlying
+`G…` with the mux id dropped. **Smart wallets** are not a CLI
+feature today. The CLI can deploy a custom-account contract and send funds to it, but it cannot
+sign that contract's authorization entry: `contract invoke` stops with
+`Missing signing key for account C…`, and the `tx sign` path leaves the entry unsigned so the
+transaction fails on-chain inside `__check_auth`. Measured on testnet against a deployed v1 smart
+wallet holding real balance. Do not move funds into a contract account from the CLI expecting to
+move them out the same way.
 
 ## Common pitfalls
 

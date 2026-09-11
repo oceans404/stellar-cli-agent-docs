@@ -32,7 +32,14 @@ These are absent from the CLI. None of them is planned in it.
 
 ## What bounds an agent today
 
-Five mechanisms do real work. Combine them rather than picking one.
+Seven mechanisms do real work, and they split into two kinds. Allowances, multisig thresholds, and
+the transaction fee are enforced by the protocol: they hold regardless of what the agent decides to
+do. Dedicated identities, watch-only keys, and build-only handoffs are custody: they work by
+keeping the agent's key away from funds or away from the final signature, and an agent that somehow
+obtains the key is unbounded by them.
+
+Combine them rather than picking one. [Delegate spending](../guides/delegate-spending.md) compares
+the main options by worst case and by whether a human has to be in the loop.
 
 **A dedicated identity.** Give the agent its own key and fund it with what you are willing to lose.
 This is the only control that needs no setup, and it caps your exposure at that account's balance.
@@ -102,12 +109,33 @@ unilaterally execute.
 
 ```bash
 stellar tx new set-options --source treasury \
-  --signer <AGENT_ADDRESS> --signer-weight 1 --med-threshold 2 --high-threshold 2 \
+  --signer <AGENT_ADDRESS> --signer-weight 1 --master-weight 2 \
+  --low-threshold 2 --med-threshold 2 --high-threshold 2 \
   --network testnet
 ```
 
 This is protocol-enforced and mature. It is not a second factor in the authenticator sense, and it
 bounds who must agree rather than how much may be spent.
+
+Measured on testnet: an agent submitting alone is rejected with `TxBadAuth`, no fee is charged, and
+the account's sequence number is unchanged, so the same envelope can still be co-signed and sent.
+Self-promotion fails the same way, since `set-options` is high-threshold. Two edges are easy to
+miss. Set `--low-threshold 2` explicitly, because the default of 1 against a weight-1 signer lets
+the agent run low-threshold operations alone, `bump-sequence` among them. And after revoking with
+`--signer-weight 0`, an envelope still carrying the agent's signature fails `TxBadAuthExtra` even
+when you co-sign correctly: rebuild and sign with your key alone.
+
+Note what this does not do. With master weight 2 against a threshold of 2, your key alone still
+moves everything, so the agent's signature is never required. It is a proposal channel, not a
+two-of-two.
+
+**A transaction fee the agent cannot pay.** Create the agent's account with sponsored reserves and
+a zero starting balance, then wrap each of its transactions in a fee bump you sign. An account with
+no XLM cannot submit anything, so the agent acts only when you fund that specific transaction, and
+your kill switch is declining the next one rather than racing to revoke a key. It works for Soroban
+calls as well as payments. The setup cost is real: there is no fee-bump command, so building one
+means `tx decode`, a JSON edit, and `tx encode`. Do not plan on unwinding the sponsorship as the
+control, because `revoke-sponsorship` against a zero-XLM account fails with `LowReserve`.
 
 ## The one approval gate in the CLI
 
@@ -149,6 +177,12 @@ and its own documentation says rapid iteration is expected. Launchtube, the rela
 need for the agent to hold XLM for fees, is explicitly disclaimed by SDF as a prototype without
 SLAs. SEP-45, which covers contract-account web authentication, is still Draft.
 
+Measured on testnet: the CLI can deploy a v1 smart wallet from its published wasm hash with an
+ed25519 key as signer, and can send funds to it, but cannot move funds out. `contract invoke` stops
+with `Missing signing key for account C…`, and the `tx sign` route leaves the authorization entry
+unsigned so the call traps on-chain inside `__check_auth`. Deployable, not drivable. Do not put
+funds into a contract account from the CLI expecting to get them out the same way.
+
 If you need enforced policy on mainnet today, you are assembling those pieces yourself and auditing
 the result. There is no supported path that turns "this agent may spend 100 USDC per day to these
 three addresses" into a deployed configuration.
@@ -160,6 +194,7 @@ three addresses" into a deployed configuration.
 | Development | Dedicated agent key | Friendbot on testnet | None needed |
 | Mainnet trial | Dedicated agent key | Small, replaceable balance | Secure store |
 | Mainnet, treasury funds | Watch-only for the treasury, dedicated key for the agent | Allowance from the treasury | Secure store, short allowance expiry, regular `stellar token allowance` audits |
+| Mainnet, agent on a machine you do not fully trust | Dedicated agent key, zero XLM | Sponsored reserves, asset or allowance only | A fee bump you sign per transaction; declining the next one stops the agent |
 | Mainnet, high value | Agent proposes only | None on the agent key | `--build-only` handoff, multisig thresholds, Ledger signing |
 
 ## Related pages

@@ -5,6 +5,12 @@ keywords: [Stellar, agent, build-only, tx, sign, simulate, XDR]
 
 # Build and submit transactions
 
+Split one payment into three steps: build it, sign it, send it.
+
+That buys two things. A person can read the transaction and approve it before anything is signed,
+and the signing key can live on a machine that never touches the network. An agent can prepare work
+it is not allowed to finish.
+
 Every `tx new <OPERATION>` and every `contract` command accepts `--build-only`, which stops before
 signing and submitting. It still contacts RPC to read the source account's sequence number, so
 building needs network access and a funded source account. Signing and submitting are the two steps

@@ -267,11 +267,11 @@ that gets you a parseable result instead.
 | `begin-sponsoring-future-reserves` | `--sponsored-id` |
 | `bump-sequence` | `--bump-to` |
 | `change-trust` | `--line`, `--limit` (default `9223372036854775807`; `0` removes the trustline) |
-| `claim-claimable-balance` | `--balance-id` |
+| `claim-claimable-balance` | `--balance-id`, which takes the 64-character hex form only. It rejects the `B…` strkey `tx send` returns and Horizon's 72-hex, unlike `clawback-claimable-balance` below. Convert with `stellar strkey decode <B…> \| jq -r '.claimable_balance.v0'` |
 | `clawback` | `--from`, `--asset`, `--amount` |
 | `clawback-claimable-balance` | `--balance-id` (accepts an API-prefixed hex string, a raw hex string, or a `B…` strkey) |
 | `create-account` | `--destination`, `--starting-balance` (default `10_000_000` stroops, 1 XLM) |
-| `create-claimable-balance` | `--asset` (default `native`), `--amount`, `--claimant` (repeatable) |
+| `create-claimable-balance` | `--asset` (default `native`), `--amount`, `--claimant` (repeatable, as `<ADDRESS>` or `<ADDRESS>:<PREDICATE_JSON>`). `{"unconditional":true}` is rejected; use `{"unconditional":null}`, `"unconditional"`, or a bare address |
 | `create-passive-sell-offer` | `--selling`, `--buying`, `--amount`, `--price` (`"numerator:denominator"`) |
 | `end-sponsoring-future-reserves` | none beyond the shared flags |
 | `liquidity-pool-deposit` | `--liquidity-pool-id`, `--max-amount-a`, `--max-amount-b`, `--min-price`/`--max-price` (default `1:1`) |
@@ -326,7 +326,11 @@ stellar tx new create-claimable-balance --source agent-1 --amount 10000000 \
 
 Local edit of an existing transaction envelope (submits nothing by itself). Appends one operation
 to the envelope read from stdin. Accepts the same 22 operations and flags as `stellar tx new`,
-under `stellar tx operation add <OPERATION>`.
+under `stellar tx operation add <OPERATION>`. `stellar tx op add` is an accepted short form.
+
+It does not raise the transaction's fee as it adds operations, so a multi-operation transaction
+composed this way is underfunded by default and fails with `TxInsufficientFee`. Set the fee for the
+finished transaction on the first command: `--inclusion-fee 300` covers three operations.
 
 ### `stellar tx update sequence-number next`
 
