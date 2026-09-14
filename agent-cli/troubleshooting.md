@@ -26,7 +26,7 @@ version, and the reachability plus protocol and RPC version of every network con
 
 A real run looks like this:
 
-```
+```console
 ✅ You are using the latest version of Stellar CLI: 28.0.0
 ℹ️  Rust version: 1.93.0
 ✅ Rust target `wasm32v1-none` is installed
@@ -92,7 +92,7 @@ Only retry once you have confirmed the transaction is not already on-chain.
 
 ### `TxInsufficientBalance`
 
-```
+```console
 ❌ error: transaction submission failed: TxInsufficientBalance
 ```
 
@@ -109,7 +109,7 @@ stellar token transfer --id native --from <FUNDED_IDENTITY> --to <AGENT_IDENTITY
 
 ### `Error(Contract, #13)`, `"trustline entry is missing for account"`
 
-```
+```console
 HostError: Error(Contract, #13)
 
 Event log (newest first):
@@ -137,7 +137,7 @@ stellar keys fund <NAME> --network testnet
 
 ### `Error(Contract, #6)`, `"account entry is missing"`
 
-```
+```console
 HostError: Error(Contract, #6)
 
 Event log (newest first):
@@ -222,7 +222,7 @@ cannot merge until that sponsorship ends.
 
 ### `Invalid URL Bring Your Own` on mainnet
 
-```
+```console
 ❌ error: Invalid URL Bring Your Own: https://developers.stellar.org/docs/data/rpc/rpc-providers
 ```
 
@@ -243,7 +243,7 @@ Pick an endpoint from Stellar's [RPC providers page](https://developers.stellar.
 
 ### Default network unreachable
 
-```
+```console
 ⚠️  Default network "local" (http://localhost:8000/rpc) is unreachable
 ```
 
@@ -264,11 +264,14 @@ stellar network use testnet
 
 ### `TxBadAuth` after signing
 
-```
+```console
 ❌ error: transaction submission failed: TxBadAuth
 ```
 
-A signature commits to the network passphrase it was made under. `stellar tx sign` falls back to
+This has two unrelated causes. The second one is below.
+
+**Cause 1, a passphrase mismatch.** A signature commits to the network passphrase it was made
+under. `stellar tx sign` falls back to
 your saved default network's passphrase whenever you omit `--network` or `--network-passphrase`. If
 that default does not match the network you submit to, the envelope looks valid but fails on
 submission with `TxBadAuth`. Hashing the same unsigned envelope with no network flags and with the
@@ -280,6 +283,84 @@ Fix: pass `--network` explicitly at the sign stage, every time.
 ```bash
 stellar tx sign --sign-with-key <NAME> --network <NET>
 ```
+
+**Cause 2, not enough signature weight.** On an account with multiple signers, a signature that
+does not meet the operation's threshold fails the same way. This is the expected result when an
+agent signs alone on a co-signed vault, and it is not an error to fix: it is the control working.
+No fee is charged and the source account's sequence number is unchanged, so the same envelope can
+still be co-signed and submitted. See [Delegate spending](guides/delegate-spending.md).
+
+Tell the two apart by hashing: a passphrase mismatch changes the envelope hash, a weight shortfall
+does not.
+
+## Delegated spending
+
+Errors specific to the four patterns in [Delegate spending](guides/delegate-spending.md), each
+measured on testnet.
+
+### `TxBadAuthExtra` when co-signing
+
+An envelope carries a signature matching no signer on the account. The usual cause is revoking an
+agent's signer weight and then co-signing a proposal the agent had already signed. Stellar rejects
+the orphaned signature even though your own is correct.
+
+Fix: after revoking, rebuild the transaction and sign it with your key alone. Do not route through
+`tx sign --sign-with-key <AGENT>` again.
+
+### `TxInsufficientFee` on a multi-operation transaction
+
+`stellar tx op add` appends an operation without raising the transaction's fee, so a sandwich built
+by piping `tx op add` is underfunded by default.
+
+Fix: set the fee for the finished transaction on the first command, `--inclusion-fee 300` for three
+operations.
+
+### `Payment(Underfunded)` inside a `TxFeeBumpInnerFailed` dump
+
+Reads as though the fee bump is broken. It is not: the outer fee bump was charged and the inner
+payment failed. The usual cause is a zero-XLM agent sending `native`, because `--asset` defaults to
+`native` and that account holds none by construction.
+
+Fix: pass `--asset <CODE:ISSUER>` explicitly. A zero-XLM agent spends assets, never XLM.
+
+### `Error(Contract, #9)` means two different things
+
+Read the message, never the code alone.
+
+- `"not enough allowance to spend"` with `[remaining, requested]`: the draw exceeds what is left.
+- `"live_until must be >= ledger sequence"`: an `approve` whose expiration ledger is already in the
+  past, usually from a stale `ledger latest` read.
+
+An over-cap draw also has a second shape. Simulation normally catches it for free, but a
+transaction signed while the allowance was good and submitted after it was revoked fails at
+consensus with `TxFailed([OpInner(InvokeHostFunction(Trapped))])`, a charged fee, and the error in
+the diagnostic events rather than in any of the strings above.
+
+### `invalid hex for balance-id`
+
+`claim-claimable-balance` accepts the 64-character hex form only. It rejects the `B…` strkey that
+`tx send` returns and the 72-hex Horizon reports.
+
+Fix: `stellar strkey decode <B_STRKEY> | jq -r '.claimable_balance.v0'`, or drop the first 8
+characters of Horizon's 72.
+
+### `ClaimClaimableBalance(NoTrust)` and `(CannotClaim)`
+
+`NoTrust` means the claimant has no trustline for the asset. Add one before claiming; native needs
+none.
+
+`CannotClaim` means this claimant's predicate no longer holds, usually a passed deadline. The fee
+is still charged. Nothing expires on its own: the entry stays on the ledger consuming a reserve
+until some claimant takes it, which is why a grant should always name a second, unconditional
+claimant.
+
+### `LowReserve` on `revoke-sponsorship`
+
+Buried in a multi-line Rust debug dump, so match on `LowReserve` alone. A sponsored account with no
+XLM cannot take over its own reserve, so the sponsorship cannot be unwound this way, for either the
+account entry or a trustline.
+
+Fix: there is none. With a zero-XLM agent, your control is declining to sign the next fee bump.
 
 ## Soroban contract calls
 
@@ -326,7 +407,7 @@ placeholder.
 
 ### `Secure Store does not reveal secret key`
 
-```
+```console
 ❌ error: Secure Store does not reveal secret key
 ```
 

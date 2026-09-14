@@ -5,6 +5,12 @@ keywords: [Stellar, agent, x402, payments, USDC, SEP-41, CLI]
 
 # Pay for APIs with x402
 
+Call an API that refuses to answer without payment, pay it in USDC, and get the content back.
+Expect to spend 0.01 testnet USDC and to end with a transaction hash proving it settled on-chain.
+
+The payment happens inside your agent's own code, not at the terminal. Your part is giving it a
+funded identity and confirming afterwards that the money actually moved.
+
 x402 is not a `stellar` CLI command. There is no `x402` subcommand, and nothing in the CLI's help
 tree mentions HTTP 402. The CLI's role in an x402 payment is limited to two things: an identity to
 sign with, and SEP-41 token transfers as the settlement rail underneath the protocol. The x402
@@ -20,7 +26,7 @@ of this page.
 
 ## Ask your agent
 
-```
+```text
 Pay for https://stellar.org/x402-demo/api/protected/testnet with x402 on Stellar testnet using
 USDC, then show me the response.
 ```

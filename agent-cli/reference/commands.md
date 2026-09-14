@@ -53,14 +53,34 @@ Present on any command that talks to an RPC endpoint.
 
 ## Transaction options
 
-Present on any command that builds or submits a transaction.
+Present on the `stellar tx` family: `tx new <OPERATION>`, `tx operation add <OPERATION>`, and the
+commands that submit them.
+
+They are **not** present on `stellar token` writes. `token transfer` and `token approve` build and
+submit a transaction and accept none of these flags, so their fee cannot be capped and they have no
+`--build-only`. A `stellar token` write routes through the Stellar Asset Contract and costs a
+roughly a hundred times the 100-stroop classic default, so the uncappable fee is also the larger
+one. The exact figure varies with the ledger entries touched rather than with the asset, so do not
+budget from a single quoted number. Where you need a fee ceiling or an unsigned envelope, use `stellar tx new payment`
+instead.
 
 | Flag | Required | Description |
 |---|---|---|
-| `-s, --source-account <SOURCE_ACCOUNT>` | Yes, wherever it appears | Alias `--source`. Accepts an identity (`--source agent-1`), a public key (`--source <ADDRESS>`), a muxed account (`--source <MUXED_ADDRESS>`), a secret key, or a seed phrase. Also signs the final transaction unless `--build-only` is passed, in which case signing with a bare public key fails. Env `STELLAR_ACCOUNT`. |
+| `-s, --source-account <SOURCE_ACCOUNT>` | Required, but see below | Alias `--source`. Accepts an identity (`--source agent-1`), a public key (`--source <ADDRESS>`), a muxed account (`--source <MUXED_ADDRESS>`), a secret key, or a seed phrase. Also signs the final transaction unless `--build-only` is passed, in which case signing with a bare public key fails. Env `STELLAR_ACCOUNT`. |
 | `--fee <FEE>` | No | Deprecated. Use `--inclusion-fee`. Fee in stroops. Env `STELLAR_FEE`. |
 | `--inclusion-fee <INCLUSION_FEE>` | No | Maximum fee for transaction inclusion, in stroops. Defaults to `100` if no flag, env var, or saved default is set. Env `STELLAR_INCLUSION_FEE`. |
 | `--build-only` | No | Builds the transaction and writes unsigned base64 XDR to stdout. Submits nothing. |
+
+**`--source-account` is required and can be satisfied without you typing it.** The requirement is met
+by `[defaults] identity` in `~/.config/stellar/config.toml`, or by `STELLAR_ACCOUNT`, so a command
+that names no source still runs and originates from whatever that resolves to. `--help` prints the
+resolved value, as in `[env: STELLAR_ACCOUNT=alice]`, which reads like documentation and is a live
+binding. Measured: `contract deploy`, `contract invoke --send yes`, and `contract asset deploy` all
+proceed with no source named. `tx operation add` does not, and leaves the operation source null to
+inherit the transaction source.
+
+Run `stellar env` before any write to see what you would be spending from, and pass `--source`
+explicitly in anything scripted.
 
 ## Signing options
 
@@ -90,6 +110,7 @@ cost to stderr), and `--auth-mode <enforce|root|non-root>` (env `STELLAR_AUTH_MO
 | Variable | Description |
 |---|---|
 | `STELLAR_ACCOUNT` | Default for `--source-account`. |
+| `STELLAR_OPERATION_SOURCE_ACCOUNT` | Default for `--operation-source-account` on `stellar tx operation add`. |
 | `STELLAR_NETWORK` | Default for `--network`. |
 | `STELLAR_RPC_URL` | Default for `--rpc-url`. |
 | `STELLAR_RPC_HEADERS` | Default for `--rpc-header`. |
@@ -187,6 +208,11 @@ Also accepts [RPC options](#rpc-options).
 Read-only. `--id <ID>` (required), `--output <text|json|json-formatted>` (default `text`). Also
 accepts [RPC options](#rpc-options).
 
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` in this section are
+merged but not in the 28.0.0 release. On a release install each exits `2` with
+`error: unrecognized subcommand`. They need a build from `main`, and bare `stellar` resolves to the
+release on most machines. See [Quickstart step 1](../quickstart.md).
+
 ### `stellar token symbol`
 
 Read-only. Same shape as `stellar token name`.
@@ -267,11 +293,11 @@ that gets you a parseable result instead.
 | `begin-sponsoring-future-reserves` | `--sponsored-id` |
 | `bump-sequence` | `--bump-to` |
 | `change-trust` | `--line`, `--limit` (default `9223372036854775807`; `0` removes the trustline) |
-| `claim-claimable-balance` | `--balance-id` |
+| `claim-claimable-balance` | `--balance-id`, which takes the 64-character hex form only. It rejects the `B…` strkey `tx send` returns and Horizon's 72-hex, unlike `clawback-claimable-balance` below. Convert with `stellar strkey decode <B…> \| jq -r '.claimable_balance.v0'` |
 | `clawback` | `--from`, `--asset`, `--amount` |
 | `clawback-claimable-balance` | `--balance-id` (accepts an API-prefixed hex string, a raw hex string, or a `B…` strkey) |
 | `create-account` | `--destination`, `--starting-balance` (default `10_000_000` stroops, 1 XLM) |
-| `create-claimable-balance` | `--asset` (default `native`), `--amount`, `--claimant` (repeatable) |
+| `create-claimable-balance` | `--asset` (default `native`), `--amount`, `--claimant` (repeatable, as `<ADDRESS>` or `<ADDRESS>:<PREDICATE_JSON>`). `{"unconditional":true}` is rejected; use `{"unconditional":null}`, `"unconditional"`, or a bare address |
 | `create-passive-sell-offer` | `--selling`, `--buying`, `--amount`, `--price` (`"numerator:denominator"`) |
 | `end-sponsoring-future-reserves` | none beyond the shared flags |
 | `liquidity-pool-deposit` | `--liquidity-pool-id`, `--max-amount-a`, `--max-amount-b`, `--min-price`/`--max-price` (default `1:1`) |
@@ -325,8 +351,21 @@ stellar tx new create-claimable-balance --source agent-1 --amount 10000000 \
 ### `stellar tx operation add`
 
 Local edit of an existing transaction envelope (submits nothing by itself). Appends one operation
-to the envelope read from stdin. Accepts the same 22 operations and flags as `stellar tx new`,
-under `stellar tx operation add <OPERATION>`.
+to the envelope read from stdin. Accepts the same 22 operations as `stellar tx new`, under
+`stellar tx operation add <OPERATION>`. `stellar tx op add` is an accepted short form.
+
+It takes one flag `stellar tx new` does not:
+
+| Flag | Required | Description |
+|---|---|---|
+| `--operation-source-account <OPERATION_SOURCE_ACCOUNT>` | No | Alias `--op-source`. Sets the source account for this operation only, rather than for the transaction. This is what lets one transaction carry operations that different accounts authorize, which every sponsorship pattern needs. Env `STELLAR_OPERATION_SOURCE_ACCOUNT`. |
+
+Without it, every appended operation inherits the transaction's source. With it, the operation
+carries its own `source_account` in the envelope and that account must also sign.
+
+It does not raise the transaction's fee as it adds operations, so a multi-operation transaction
+composed this way is underfunded by default and fails with `TxInsufficientFee`. Set the fee for the
+finished transaction on the first command: `--inclusion-fee 300` covers three operations.
 
 ### `stellar tx update sequence-number next`
 

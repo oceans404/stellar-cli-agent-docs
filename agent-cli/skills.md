@@ -58,6 +58,8 @@ that should stop and ask the user, and a symptom-to-cause failure table.
 | [`workflows/delegate-spending.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/delegate-spending.md) | Grant a capped, expiring allowance | [Delegate spending](guides/delegate-spending.md) |
 | [`workflows/audit-and-revoke-allowances.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/audit-and-revoke-allowances.md) | Check and revoke what is already granted | [Delegate spending](guides/delegate-spending.md) |
 | [`workflows/pay-for-apis-x402.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/pay-for-apis-x402.md) | Pay an x402-protected endpoint and confirm settlement | [Pay for APIs with x402](guides/pay-for-apis-x402.md) |
+| [`workflows/self-expiring-grant.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/self-expiring-grant.md) | Park funds an agent may claim until a deadline, and reclaim them | [Delegate spending](guides/delegate-spending.md) |
+| [`workflows/zero-xlm-agent.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/zero-xlm-agent.md) | Sponsor an agent that holds no XLM and pay its fees per transaction | [Delegate spending](guides/delegate-spending.md) |
 | [`workflows/acquire-an-asset.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/acquire-an-asset.md) | Add a trustline and take delivery of an asset | [USDT0 on mainnet](guides/usdt0-on-mainnet.md) |
 | [`workflows/air-gapped-signing.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/air-gapped-signing.md) | Split build, sign, and submit across machines | [Build and submit transactions](guides/build-and-submit-transactions.md) |
 | [`workflows/troubleshooting.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/workflows/troubleshooting.md) | Diagnose a failure from the symptom | [Troubleshooting](troubleshooting.md) |
@@ -71,4 +73,13 @@ that `token transfer` returns an empty stdout on a submission timeout even thoug
 reached the network, and [`references/errors.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/errors.md) tells an agent not to retry until it
 has confirmed on-chain state.
 
-Where the two disagree, the docs are the source and the skill is stale. Report it.
+Where the two disagree, neither layer is authoritative. Resolve the conflict by running the
+command against a live network, then write the measured result into both layers. Of four
+doc-versus-skill conflicts resolved at a terminal during testing, the skill matched the binary in
+three. That is a direction on a sample of four, not a rate, and it is enough to retire any rule that
+picks a winner by layer.
+
+For errors specifically the two layers are not independent, so treat agreement between them as weak
+evidence. [Output and errors](reference/output-and-errors.md) states that `references/errors.md` is
+"the agent-facing version of this page", which is why the error claims that were wrong were wrong in
+identical words on both sides.

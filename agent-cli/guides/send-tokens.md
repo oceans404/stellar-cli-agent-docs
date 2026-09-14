@@ -5,6 +5,12 @@ keywords: [Stellar, agent, token transfer, payments, CLI]
 
 # Send tokens
 
+Send someone tokens and confirm the money arrived. On testnet this takes about a minute.
+
+Moving the tokens is one command. The work is getting the amount right, because the CLI counts in
+the token's smallest unit rather than the number a person would say out loud, and making sure the
+destination is able to hold the asset at all.
+
 `stellar token transfer` moves the native asset or any classic asset to a recipient in one command.
 `--amount` is always the token's smallest unit, not a human-readable number; see Amounts are
 smallest units below before you convert one.
@@ -14,7 +20,7 @@ of this page.
 
 ## Ask your agent
 
-```
+```text
 Send 25 USDC from agent-1 to <ADDRESS> on testnet, then confirm the transaction went through.
 ```
 
@@ -28,6 +34,26 @@ Send 25 USDC from agent-1 to <ADDRESS> on testnet, then confirm the transaction 
    ```bash
    stellar token transfer --id <TOKEN> --from <SOURCE> --to <ADDRESS> --amount <AMOUNT> --network <NETWORK>
    ```
+
+   This costs roughly a hundred times the classic equivalent, because `token transfer` routes
+   through the Stellar Asset Contract and pays Soroban resource fees on top of the base fee.
+   `tx new payment` charged 100 stroops in every case measured.
+
+   **There is no single figure to quote.** The cost tracks how many ledger entries the transfer
+   touches, not which asset it is. Measured on testnet:
+
+   | Transfer | Fee, stroops |
+   |---|---|
+   | `tx new payment`, any asset | 100 |
+   | `token transfer --id native` | 13745 |
+   | `token transfer`, classic, issuer to holder | 9519 |
+   | `token transfer`, classic, holder to holder | 14352 |
+
+   Those last two are the same asset on the same build. Budget by the order of magnitude and measure
+   your own path if the exact number matters. `token transfer` accepts no fee flag, so it cannot be
+   capped. Fund the source with headroom in the tens of thousands of stroops, not the token amount
+   alone. Where you need a fee ceiling, `stellar tx new payment --asset <CODE:ISSUER>
+   --inclusion-fee <N>` is the cheaper and cappable path.
 
 3. Capture the transaction hash. It is the bare last line of stdout. `tx fetch result` takes it as
    `--hash`, not a positional argument:
@@ -48,10 +74,24 @@ Send 25 USDC from agent-1 to <ADDRESS> on testnet, then confirm the transaction 
 
 A classic asset needs a trustline on the destination account before that account can hold it.
 `native` never needs one. Without one, on a destination account that otherwise exists, the transfer
-fails at simulation with `Error(Contract, #13)`, "trustline entry is missing for account". If the
-destination does not exist on the network at all, never funded, the error is different:
-`Error(Contract, #6)`, "account entry is missing". Neither message names the fix directly. Fund an
-unfunded destination with `stellar keys fund <NAME>`. Create a missing trustline from the
+fails at simulation with `Error(Contract, #13)`, "trustline entry is missing for account". `#13`
+does not prove the destination exists: an account that has never existed has no trustline either,
+and returns `#13` identically.
+
+A destination that does not exist on the network at all behaves differently for native and for
+classic assets, and the native case is the one the Quickstart puts you in:
+
+| Asset | Destination never funded | What the CLI returns |
+|---|---|---|
+| `native` | `--amount` at or above `10000000` (1 XLM) | Succeeds, and creates the destination account |
+| `native` | `--amount` below `10000000` | `Error(Contract, #14)`, "transfer amount is below minimum balance for new account" |
+| `CODE:ISSUER` | Any amount | `Error(Contract, #13)`, indistinguishable from a funded account with no trustline |
+
+`#14` is the amount being too small to cover the new account's base reserve, not a funding problem
+on your side. The fix is to raise `--amount` to at least 1 XLM, not to fund the destination. That
+matters most on mainnet, where `stellar keys fund` has no friendbot to call and cannot run at all.
+
+Neither `#13` nor `#14` names its fix directly. Create a missing trustline from the
 destination account first
 (`stellar tx new change-trust --source <DESTINATION> --line <TOKEN>`), then retry the transfer. The
 SAC's own `trust` function is a friendlier alternative, since the destination is invoking the
@@ -77,9 +117,13 @@ prose.
 ## Common pitfalls
 
 `--to` takes a `G...` address or a local identity name, not a contract alias unless that alias
-resolves to one. An unfunded or nonexistent destination account fails at simulation with a
-different error than a missing trustline, `Error(Contract, #6)` rather than `#13`, so do not assume
-a trustline problem before checking which code you actually got. Either way, nothing is signed.
+resolves to one.
+
+A nonexistent destination does not announce itself. On a classic asset it returns `Error(Contract,
+#13)`, the same code as a funded account with no trustline. On native it either succeeds and creates
+the account, or returns `Error(Contract, #14)` when the amount is under 1 XLM. Check which code you
+actually got before assuming a trustline problem, and query the destination's native balance if you
+need to know whether the account exists. Either way, nothing is signed.
 
 ## Related pages
 

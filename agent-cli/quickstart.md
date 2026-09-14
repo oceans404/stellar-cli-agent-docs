@@ -53,15 +53,26 @@ September 2025 and reported success.
 `--root ~/.stellar-main` keeps the build out of `~/.cargo/bin`, where it would be named `stellar`
 and shadow, or be shadowed by, your release install depending on PATH order.
 
-Verify with a subcommand, not with `--version`. A main build and a release build both report
-`28.0.0` and differ only in the commit hash, so the version string cannot tell you which one you
-are running:
+`--version` tells you which build you have. Both report `28.0.0`, but the commit hash is printed
+alongside it and the two differ:
+
+```bash
+~/.stellar-main/bin/stellar --version    # stellar 28.0.0 (f6c372a0...)  main
+stellar --version                        # stellar 28.0.0 (300aaf69...)  release
+```
+
+If you do not know which hash is which, ask for a subcommand only the main build has:
 
 ```bash
 ~/.stellar-main/bin/stellar token decimals --help
 ```
 
-That prints help on a main build and `error: unrecognized subcommand 'decimals'` on the release.
+That prints help on a main build and `error: unrecognized subcommand 'decimals'` on the release,
+exit code 2.
+
+This matters more than it looks. Bare `stellar` resolves to whatever is on your PATH, which is the
+release install on most machines, and release behavior looks correct for everything except those
+five subcommands. The absence of an error is not evidence you ran the build you meant to.
 Call the main build by its full path in the steps that need it, and keep `stellar` pointing at the
 release for everything else.
 
@@ -130,8 +141,10 @@ it, because the most an agent can lose is what its own account holds.
 stellar keys generate agent-1 --network testnet --fund
 ```
 
-Pass `--fund` or the account is created locally but never funded on the network, and later commands
-fail with a trustline error that does not mention funding.
+Pass `--fund` or the account is created locally but never funded on the network. The first command
+that needs it then fails with `Error(Contract, #6)`, `"account entry is missing"`, which names
+neither funding nor `--fund`. The words `trustline`, `trust`, and `fund` do not appear in that error
+at all. Fix it with `stellar keys fund <NAME> --network testnet`.
 
 Check the address and balance:
 
@@ -196,7 +209,9 @@ option protects you from.
 
 ## Step 5: Set your defaults
 
-This step is for you at the terminal, not for your agent.
+This step is for you at the terminal, not for your agent. `stellar network use` and `stellar keys
+use` write the default machine-wide, not per project and not per shell, so every other repository on
+this machine picks it up.
 
 ```bash
 stellar network use testnet
@@ -214,9 +229,11 @@ Pass `--reveal` to print secrets. The flag was added in 27.0.0, which is also th
 where concealment is dependable. See [Troubleshooting](troubleshooting.md) if you are on an older
 install.
 
-An agent should skip this step and keep passing `--network` and `--source` explicitly on every
-command, because it cannot see what a previous session saved, and `stellar network use` writes that
-default machine-wide rather than per project or per shell.
+An agent should skip this step and keep passing `--network` explicitly on every command, along
+with whichever source flag that command takes, because it cannot see what a previous session saved.
+
+Not every command takes `--source`. The `tx` family and `stellar keys` do. `stellar token transfer`
+names its source `--from` and rejects `--source`. Check `--help` before you script a command.
 
 In CI, prefer environment variables over saved defaults, because they are explicit in the job
 definition:
@@ -238,7 +255,7 @@ stellar keys address agent-2
 
 Ask your agent:
 
-```
+```text
 Send 1 XLM from agent-1 to agent-2 on testnet, then show me the new balance.
 ```
 
@@ -250,17 +267,52 @@ stellar token balance --id native --account agent-1 --network testnet --decimal
 ```
 
 `--amount` is in the token's smallest unit, so `10000000` is 1 XLM at 7 decimals. Never assume 7.
-Read it with `stellar token decimals --id <TOKEN>`.
+Read it with `~/.stellar-main/bin/stellar token decimals --id <TOKEN>`. `token decimals` is one
+of the five subcommands that need the main build, so call it by its full path.
+
+An `--amount` below the smallest unit is not rejected. `--amount 1` submits 0.0000001 XLM and exits
+0, so a missing multiplier looks like a success.
+
+The balance line above is what catches that, so read it rather than just running it. After a 1 XLM
+transfer `agent-1` should fall by 1 XLM plus the fee. If it fell by a fraction of a stroop instead,
+the transfer went through with the wrong amount. `tx fetch result` will not tell you: it reports
+`tx_success` and the same fee for both, and carries no amount, source, or destination.
+
+`token transfer` routes through the Stellar Asset Contract and pays Soroban resource fees on top of
+the base fee, so it costs roughly a hundred times the classic equivalent and accepts no fee flag at
+all. On testnet a native transfer measured 13745 stroops against 100 for `tx new payment`. Treat
+that as an order of magnitude, not a constant: the figure depends on how many ledger entries the
+transfer touches, and measured values on the same testnet asset ranged from 9519 to 14352 depending
+only on who the counterparty was. It is
+taught here because one command covers XLM and every other token identically. When you need a capped
+fee, or an unsigned envelope, use the classic path instead, which takes `--inclusion-fee`:
+
+```bash
+stellar tx new payment --source agent-1 --destination <ADDRESS> --amount 10000000 \
+  --network testnet --inclusion-fee 200
+```
 
 ## Step 7: Verify what your agent did
 
-Every submitted transfer prints its hash on the last line of stdout, so your agent can capture it.
+In text mode a submitted transfer prints its hash as the last line of stdout, and again on the
+stderr line `ℹ️  Signing transaction: <HASH>`. With `--output json` the hash is in stdout's `tx_hash`
+and nowhere else, because JSON mode writes zero bytes to stderr on success and failure alike.
 `tx fetch result` takes the hash as `--hash`, not a positional argument:
 
 ```bash
 TX=$(stellar token transfer --id native --from agent-1 --to <ADDRESS> --amount 10000000 --network testnet)
 stellar tx fetch result --hash "$TX" --network testnet
 ```
+
+**An empty `$TX` does not mean the transfer failed.** On a `transaction submission timeout` the
+transaction has already reached the network, stdout can carry zero bytes, and the exit code is 1,
+which is byte-identical to a clean failure and is not one. Never retry a timed-out write. Confirm
+on-chain state first: re-read both balances, take the hash from the stderr signing line, and if you
+have no hash at all, find it through Horizon. Only retry once `tx fetch result` comes back
+"not found".
+
+A line starting with `❌` that names a cause (`TxBadAuth`, `TxBadSeq`, a rejected simulation) is a
+real failure and is safe to retry.
 
 For machine-readable output on either command, add `--output json`. Coverage is not uniform across
 the CLI, and only the `stellar token` family returns typed errors. See
