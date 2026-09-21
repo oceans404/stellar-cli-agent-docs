@@ -24,7 +24,7 @@ of this page.
 
 ## Ask your agent
 
-```
+```text
 Build a payment from agent-1 to <ADDRESS> for 10 XLM without submitting it, then show me the unsigned XDR.
 ```
 
@@ -70,14 +70,18 @@ removes that line along with everything else. This is not like `token transfer`,
 bare hash as its last stdout line and does support `--output json`.
 
 To get a parseable receipt, let `tx send` produce it rather than trying to scrape an earlier stage.
-`tx send`, the last stage of the pipeline in step 3 above, always returns JSON with top-level keys
-`status`, `ledger`, `application_order`, `fee_bump`, `tx_hash`, `created_at`, `envelope`, `result`,
-`result_meta`, and `events`. On success `status` is `SUCCESS`. The hash field is `tx_hash`, not
-`hash`.
+`tx send`, the last stage of the pipeline in step 3 above, returns JSON **on success only**, with
+top-level keys `status`, `ledger`, `application_order`, `fee_bump`, `tx_hash`, `created_at`,
+`envelope`, `result`, `result_meta`, and `events`. On success `status` is `SUCCESS`. The hash field
+is `tx_hash`, not `hash`. It has no `--output` flag, so the shape is always the indented one.
+
+On a submission failure it writes **zero bytes to stdout** and puts the error on stderr. Empty
+stdout with a non-zero exit is therefore a definite failure, not an ambiguous one, and the exception
+below is specifically about the case where stdout has content you could not parse.
 
 Never merge stderr into stdout here. `tx send` writes `ℹ️  Transaction hash is <HASH>` to stderr and
-the JSON receipt to stdout; `2>&1` interleaves them and breaks the parse. A failed parse is not
-evidence of failure. The transaction may have already succeeded. Confirm with
+the JSON receipt to stdout; `2>&1` interleaves them and breaks the parse. Unparseable content on
+stdout is not evidence of failure. The transaction may have already succeeded. Confirm with
 `stellar tx fetch result --hash <HASH> --network <NETWORK>` before retrying. Capture stderr to a
 file rather than discarding it; the hash you need for that check is only there.
 
@@ -93,8 +97,17 @@ stellar tx new payment --source <SOURCE> --destination <ADDRESS> --amount <AMOUN
 ```
 
 That prints `source_account`, `fee`, `seq_num`, `cond` (the timebounds, `"none"` if there are
-none), the `operations` array, and `signatures: []` on an unsigned envelope. Those fields are what
-a reviewer actually needs. `tx decode` needs no RPC connection.
+none), `memo`, the `operations` array, `ext`, and `signatures: []` on an unsigned envelope.
+`tx decode` needs no RPC connection. Do not skip `memo` when you review: it is the field that routes
+a deposit at an exchange, and a payment with the wrong memo reaches the right account and the wrong
+person.
+
+**None of those fields is the network.** A mainnet payment and a testnet payment decode to an
+identical field set, so the rendered envelope alone cannot tell a reviewer which network they are
+approving. Carry the network alongside the envelope out of band: name it in the approval request,
+and keep testnet and mainnet envelopes in separate, differently named files. The account addresses
+are the only in-band hint, and they are a weak one, because the same key pair is valid on every
+network.
 
 `stellar tx hash` then computes the envelope's hash without signing or submitting, also from stdin
 and also offline. Use it to confirm the thing you approved is the thing you are about to sign:
@@ -106,6 +119,28 @@ stellar tx new payment --source <SOURCE> --destination <ADDRESS> --amount <AMOUN
 
 The hash is unchanged by signing, so the same value should come back after `tx sign` and from the
 network on submit.
+
+Two `tx hash` calls compared against each other confirm the envelope is the same envelope, and
+nothing more. Both are computed from the passphrase you passed, so they agree even when `tx sign`
+used a different one.
+
+**To catch a wrong-network signature before you submit, compare `tx hash` against `tx sign`'s own
+output.** `tx sign` prints `ℹ️  Signing transaction: <HASH>` to stderr, computed under the passphrase
+it actually used. Both commands run offline:
+
+```bash
+stellar tx hash --network-passphrase "<INTENDED PASSPHRASE>" < unsigned.xdr
+stellar tx sign --sign-with-key <IDENTITY> --network-passphrase "<INTENDED PASSPHRASE>" \
+  < unsigned.xdr > signed.xdr
+```
+
+Equal hashes mean the signature was made for the network you intended. Unequal means it was not, and
+the envelope is dead before you spend a submit on it.
+
+Two conditions. Pass `--network-passphrase` explicitly to **both** commands: omit it on both and
+they resolve the same saved default, agree with each other, and pass on a wrong-network signature.
+And `--quiet` suppresses the `tx sign` line entirely, so the check and `--quiet` cannot be used
+together.
 
 Check the destination while you are still at the build stage. A native `payment` cannot create an
 account, so paying an address that has never been funded fails at submit with
@@ -146,11 +181,31 @@ exit code of each stage, or run the pipeline one stage at a time the first time 
 `tx send` can fail with `TxBadSeq`. The sequence number is fixed at build time, step 1, not at
 submit time, step 3. Anything else signing for the same source account in between, a concurrent
 agent or another one of your own commands, makes the envelope stale before it reaches step 3.
-Rebuild from step 1 and re-sign; there is no way to patch an existing envelope's sequence number.
-This is the natural failure mode of splitting build, sign, and send apart, and the air-gapped
-variant is most exposed to it, since minutes or hours can pass in between. Elapsed time alone is
-not the cause: only another transaction from the same source account advances the sequence. A long
-delay is harmless unless the envelope carries timebounds, which `tx decode` shows as `cond`.
+`stellar tx update sequence-number next` fetches the source account's current sequence, increments
+it, and rewrites the envelope in place. It is a read-only network call.
+
+**It keeps the signatures the envelope already carried.** Patching an envelope you have already
+signed and then signing again leaves two signatures on it, and the submit fails `TxBadAuthExtra`.
+Patch while the envelope is still unsigned, then sign:
+
+```bash
+stellar tx update sequence-number next --network <NETWORK> < unsigned.xdr > fixed.xdr
+stellar tx sign --sign-with-key <IDENTITY> --network <NETWORK> < fixed.xdr | stellar tx send --network <NETWORK>
+```
+
+If the only copy you have is already signed, rebuild from step 1 instead. Measured on testnet across
+both builds, three steps each: patch-then-sign on an unsigned envelope succeeds, rebuild-then-sign
+succeeds, and patch-then-re-sign on a signed envelope fails `TxBadAuthExtra` every time.
+
+Elapsed time alone is not the cause: only another transaction from the same source account advances
+the sequence. A long delay is harmless unless the envelope carries timebounds, which `tx decode`
+shows as `cond`.
+
+**Two `--build-only` calls against the same source return the same sequence number.** `--build-only`
+reads the account's current sequence and adds one; it reserves nothing and advances nothing. An
+agent that batch-builds several envelopes before submitting any of them gets a set that all collide,
+and only the first can land. Build and submit one at a time, or patch each envelope with the command
+above before you send it.
 
 ## Related pages
 

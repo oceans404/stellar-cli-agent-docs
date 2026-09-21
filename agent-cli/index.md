@@ -38,6 +38,12 @@ Ask in plain language. Your agent turns it into commands.
 **Check what an account holds.** "How much USDC is in my treasury account?" This one needs no keys
 and no setup at all, so it is the safest thing to try first.
 
+One thing to expect if you run it: asking for a specific asset an account does not hold fails rather
+than returning zero. It exits 1 and prints `Error(Contract, #13)`, "trustline entry is missing for
+account". A trustline is a per-asset opt-in, so an account holds no USDC until it has explicitly
+agreed to. XLM, the native asset, needs no trustline, so `--id native` always answers.
+[Troubleshooting](troubleshooting.md) has the full diagnosis.
+
 **Send money.** "Send 25 USDC to this address." Settles in seconds, costs about a hundredth of a
 cent.
 
@@ -46,7 +52,9 @@ you let anything touch it.
 
 **Give your agent a spending limit.** "Let my agent spend up to 50 USDC from the treasury, expiring
 tomorrow." The limit is enforced by the network itself, not by the agent's good behavior. If your
-agent tries to spend more, the network refuses. This is the feature to care about.
+agent tries to spend more, the network refuses. This is the feature to care about, and it is one of
+the five commands that are merged but not yet released, so it needs a build from `main`. The
+[Quickstart](quickstart.md) does that build in step 1.
 
 **Prepare a payment without sending it.** "Draft this payment but do not submit it." You get a file
 you can read and approve yourself. Your agent does the work, you keep the final say. You can even
@@ -54,26 +62,36 @@ keep the signing key on a separate computer that never goes online.
 
 Underneath, each of those is a command your agent composes and parses.
 
-| Task | Command |
-|---|---|
-| Read what an account holds | `stellar token balance` |
-| Identify an unfamiliar asset | `stellar token name`, `symbol`, `decimals` |
-| Move a token | `stellar token transfer` |
-| Grant capped, expiring spend authority | `stellar token approve` |
-| Audit spend authority already granted | `stellar token allowance` |
-| Send any of 22 native operations | `stellar tx new <OPERATION>` |
-| Sign a message to prove key control | `stellar message sign` |
-| Build a transaction without submitting it | any command, plus `--build-only` |
-| Deploy and call a contract | `stellar contract deploy`, `stellar contract invoke` |
-| Check its own environment | `stellar doctor` |
+| Task | Command | Available in |
+|---|---|---|
+| Read what an account holds | `stellar token balance` | 28.0.0 release |
+| Identify an unfamiliar asset | `stellar token name`, `symbol`, `decimals` | **main build only** |
+| Move a token | `stellar token transfer` | 28.0.0 release |
+| Grant capped, expiring spend authority | `stellar token approve` | **main build only** |
+| Audit spend authority already granted | `stellar token allowance` | **main build only** |
+| Send any of 22 native operations | `stellar tx new <OPERATION>` | 28.0.0 release |
+| Sign a message to prove key control | `stellar message sign` | 28.0.0 release |
+| Build a transaction without submitting it | `stellar tx new <OPERATION> --build-only` | 28.0.0 release |
+| Deploy and call a contract | `stellar contract deploy`, `stellar contract invoke` | 28.0.0 release |
+| Check its own environment | `stellar doctor` | 28.0.0 release |
+| Read the CLI's own conventions guide | `stellar skill` | **main build only** |
+
+Five `stellar token` subcommands are merged but not in the 28.0.0 release, so a release install
+cannot run them and there is no prebuilt binary that can. Getting them means compiling from source.
+
+`--build-only` is not universal. It belongs to the `tx` family. No `stellar token` command accepts
+it, so a payment you want to review before submitting has to be built with `stellar tx new payment
+--build-only` rather than `token transfer`.
 
 See [Commands](reference/commands.md) for the full surface.
 
 ## Start on testnet
 
-Setup is three commands and takes about five minutes: install the CLI, connect it to your agent,
-and generate a funded key. It all runs on Stellar's test network, where the money is fake and
-unlimited, so nothing you try can cost you anything.
+Setup is five commands: install the CLI, verify which build you got, connect it to your agent,
+set your defaults, and generate a funded key. Four of them run in seconds. The install is a source build that takes roughly 5 to 15 minutes from cold
+and needs Rust 1.93.0 or later, so budget a first sitting of about twenty minutes rather than five.
+It all runs on Stellar's test network, where the money is fake and unlimited, so nothing you try can
+cost you anything.
 
 **[Start the Quickstart](quickstart.md)** and let your agent do the work.
 
@@ -88,7 +106,7 @@ you hand your agent the keys to your savings, that is exactly what you have done
 This is the cost of nobody being in the middle. There is no company to hold your keys, and there is
 also no company to catch a mistake.
 
-Two habits make this fine in practice.
+Three habits make this fine in practice.
 
 **Give your agent its own account with only what you can afford to lose.** Not your main account. A
 separate one, funded with the amount you would be annoyed but not hurt to lose. This takes one
@@ -103,7 +121,14 @@ Fair warning on that one: granting the limit is a single command, but spending a
 takes a longer one your agent will have to look up. It works, it is just not as smooth as it should
 be yet.
 
-Stay on the test network until both habits feel automatic. It costs nothing and behaves identically.
+**Check the amount before every real transfer.** Amounts are in the token's smallest unit, not the
+number you would say out loud. At 7 decimals, 1 XLM is `--amount 10000000`. A wrong multiplier is
+not rejected: `--amount 1` submits 0.0000001 XLM, prints a transaction hash, and exits 0, so an
+amount that is 10,000,000x too small looks exactly like a success. Read the decimals with
+`stellar token decimals --id <TOKEN>` and never assume 7.
+
+Stay on the test network until all three habits feel automatic. It costs nothing and behaves
+identically.
 
 One setup detail when you do move: the CLI ships ready for the test network but not for the real one.
 Before your first real command, tell it which mainnet server to use, or you will get an

@@ -10,7 +10,7 @@ These docs explain the CLI. The skill package tells an agent how to drive it.
 The package lives in its own repository,
 [oceans404/stellar-cli-skills](https://github.com/oceans404/stellar-cli-skills), under
 `stellar-cli/`. It is a directory of markdown files an agent loads on demand: one entry point, nine
-references, and nine workflows. Clone it and copy the directory into your agent's skills location
+references, and eleven workflows. Clone it and copy the directory into your agent's skills location
 (for Claude Code, that is `~/.claude/skills/stellar-cli/` for every project, or
 `.claude/skills/stellar-cli/` for one).
 
@@ -21,6 +21,36 @@ cp -r stellar-cli-skills/stellar-cli ~/.claude/skills/stellar-cli
 
 The skill assumes a build from `main`, which is what [Quickstart](quickstart.md) installs. Its
 frontmatter records that as `cliVersion: "main"`.
+
+## The CLI now ships its own skill guide
+
+A build from `main` has a `stellar skill` subcommand that prints a 128-line Markdown guide for AI
+agents. It is not in the 28.0.0 release, where it exits `2` with `error: unrecognized subcommand
+'skill'`.
+
+```bash
+stellar skill > stellar-cli-skill.md
+```
+
+It is a static document compiled into the binary (`cmd/soroban-cli/src/commands/skill/SKILL.md`
+upstream), not generated from the command tree, so it does not track flag changes automatically and
+it says nothing about your local config.
+
+The two layers do different jobs and do not overlap much. `stellar skill` is a conventions guide for
+a contract developer's agent: prefer `network use` and `keys use` over repeating flags, keep contract
+IDs in aliases rather than shell variables, use `--send=no` for reads, remember that storage entries
+have a TTL. It covers `network`, `keys`, `contract`, `container`, and `env`, and nothing else.
+
+Measured against the `main` build at commit `f1adb979`, `stellar skill` contains zero mentions of
+`stellar token`, `tx new`, SEP-53 message signing, `--build-only`, `approve`, `allowance`, or
+mainnet. Every one of those is something an agent handling money has to get right, and all of them
+are in this package. The two are complementary, not redundant: read `stellar skill` for how the CLI
+wants to be driven, and this package for what happens when an agent spends.
+
+Where they disagree, `stellar skill` ships with the binary and wins on the binary's own conventions.
+On `--id`, for example, it tells agents to prefer `--id` over `--contract-id` even though `main`
+renamed the canonical flag, because `--id` is the spelling that works on both builds. This package
+follows it. See [`--id` versus `--contract-id`](reference/commands.md#--id-versus---contract-id).
 
 ## Entry point
 
@@ -73,4 +103,13 @@ that `token transfer` returns an empty stdout on a submission timeout even thoug
 reached the network, and [`references/errors.md`](https://github.com/oceans404/stellar-cli-skills/blob/main/stellar-cli/references/errors.md) tells an agent not to retry until it
 has confirmed on-chain state.
 
-Where the two disagree, the docs are the source and the skill is stale. Report it.
+Where the two disagree, neither layer is authoritative. Resolve the conflict by running the
+command against a live network, then write the measured result into both layers. Of four
+doc-versus-skill conflicts resolved at a terminal during testing, the skill matched the binary in
+three. That is a direction on a sample of four, not a rate, and it is enough to retire any rule that
+picks a winner by layer.
+
+For errors specifically the two layers are not independent, so treat agreement between them as weak
+evidence. [Output and errors](reference/output-and-errors.md) states that `references/errors.md` is
+"the agent-facing version of this page", which is why the error claims that were wrong were wrong in
+identical words on both sides.

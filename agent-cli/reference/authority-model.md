@@ -8,6 +8,10 @@ keywords: [Stellar, agent, authority, spend limit, allowance, policy, multisig, 
 The CLI signs what you ask it to sign. It holds keys locally, submits directly to the network, and
 applies no judgment in between. There is no service that could refuse a transaction on your behalf.
 
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
+in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
+most machines. See [Quickstart step 1](../quickstart.md).
+
 Read this page before you hand an agent a funded key on mainnet.
 
 **Skill:** `references/authority.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version

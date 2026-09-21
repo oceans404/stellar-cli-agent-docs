@@ -26,7 +26,7 @@ version, and the reachability plus protocol and RPC version of every network con
 
 A real run looks like this:
 
-```
+```console
 ✅ You are using the latest version of Stellar CLI: 28.0.0
 ℹ️  Rust version: 1.93.0
 ✅ Rust target `wasm32v1-none` is installed
@@ -92,7 +92,7 @@ Only retry once you have confirmed the transaction is not already on-chain.
 
 ### `TxInsufficientBalance`
 
-```
+```console
 ❌ error: transaction submission failed: TxInsufficientBalance
 ```
 
@@ -109,7 +109,7 @@ stellar token transfer --id native --from <FUNDED_IDENTITY> --to <AGENT_IDENTITY
 
 ### `Error(Contract, #13)`, `"trustline entry is missing for account"`
 
-```
+```console
 HostError: Error(Contract, #13)
 
 Event log (newest first):
@@ -137,7 +137,7 @@ stellar keys fund <NAME> --network testnet
 
 ### `Error(Contract, #6)`, `"account entry is missing"`
 
-```
+```console
 HostError: Error(Contract, #6)
 
 Event log (newest first):
@@ -222,7 +222,7 @@ cannot merge until that sponsorship ends.
 
 ### `Invalid URL Bring Your Own` on mainnet
 
-```
+```console
 ❌ error: Invalid URL Bring Your Own: https://developers.stellar.org/docs/data/rpc/rpc-providers
 ```
 
@@ -243,7 +243,7 @@ Pick an endpoint from Stellar's [RPC providers page](https://developers.stellar.
 
 ### Default network unreachable
 
-```
+```console
 ⚠️  Default network "local" (http://localhost:8000/rpc) is unreachable
 ```
 
@@ -264,7 +264,7 @@ stellar network use testnet
 
 ### `TxBadAuth` after signing
 
-```
+```console
 ❌ error: transaction submission failed: TxBadAuth
 ```
 
@@ -407,7 +407,7 @@ placeholder.
 
 ### `Secure Store does not reveal secret key`
 
-```
+```console
 ❌ error: Secure Store does not reveal secret key
 ```
 

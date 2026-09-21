@@ -19,7 +19,7 @@ of this page.
 
 ## Ask your agent
 
-```
+```text
 Sign the message "agent-session-2026-09-09" with agent-1's key, then verify the signature.
 ```
 

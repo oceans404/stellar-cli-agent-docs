@@ -9,7 +9,7 @@
 
 - [Overview](agent-cli/index.md): Why an agent needs its own wallet, what your agent can do, what the CLI does not bound for you, and where to start.
 - [Quickstart](agent-cli/quickstart.md): Install the CLI, connect your agent to the Raven MCP server, create and store a key, set defaults for a terminal or CI, and make a first transfer.
-- [Skills](agent-cli/skills.md): The skill package that drives the CLI, one reference per command family and one workflow per task, with the docs page each maps to.
+- [Skills](agent-cli/skills.md): The skill package that drives the CLI, one reference per command family and one workflow per task, with the docs page each maps to. Also how it relates to `stellar skill`, the 128-line conventions guide a main build prints from the binary.
 
 ## Guides
 

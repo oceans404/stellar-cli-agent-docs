@@ -7,6 +7,10 @@ keywords: [Stellar, agent, balance, token metadata, decimals, CLI]
 
 Ask what an account holds, and what an unfamiliar token actually is, before touching it.
 
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
+in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
+most machines. See [Quickstart step 1](../quickstart.md).
+
 Nothing here moves money or needs a key, so these are the safest commands in the CLI and the right
 first thing to run when you suspect something is misconfigured. They are also the only commands
 that work from a completely fresh install with nothing set up.
@@ -34,7 +38,7 @@ of this page.
 
 ## Ask your agent
 
-```
+```text
 What are the decimals and symbol for USDC on Stellar testnet, and what does agent-1 hold of it?
 ```
 
@@ -109,7 +113,7 @@ that assumes one key, counts keys, or reaches for the first entry breaks the mom
 
 A bad token id fails with a `config`-typed error, not a balance of zero:
 
-```
+```console
 $ stellar token balance --id nonexistent_bad_id --account agent-1 --network testnet --output json
 {"error":{"type":"config","message":"contract not found: nonexistent_bad_id"}}
 ```

@@ -12,6 +12,10 @@ Every other command reports failure as unstructured text on stderr plus a non-ze
 this page before you wire an agent to parse CLI output, because the coverage is not uniform and
 guessing wrong costs a debugging session.
 
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
+in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
+most machines. See [Quickstart step 1](../quickstart.md).
+
 **Skill:** `references/errors.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
 of this page.
 
@@ -32,7 +36,8 @@ and keep `json-formatted` for output a person reads.
 | `network settings` | `xdr`, `json`, `json-formatted` | `json` |
 | `ledger latest`, `ledger fetch` | `text`, `json`, `json-formatted` | `text` |
 | `fees stats`, `fee-stats` (deprecated) | `text`, `json`, `json-formatted` | `text` |
-| `contract info interface`, `contract info meta`, `contract info env-meta` | `rust`, `text`, `xdr-base64`, `json`, `json-formatted` | `text` |
+| `contract info interface` | `rust`, `xdr-base64`, `json`, `json-formatted` (no `text`) | `rust` |
+| `contract info meta`, `contract info env-meta` | `text`, `xdr-base64`, `json`, `json-formatted` (no `rust`) | `text` |
 | `contract read` | `string`, `json`, `xdr` (`json` advertised but broken, see below) | `string` |
 | `contract inspect` (deprecated) | `xdr-base64`, `xdr-base64-array`, `docs` | `docs` |
 | `xdr decode` | `json`, `json-formatted`, `text`, `rust-debug`, `rust-debug-formatted` | `text` |
@@ -42,8 +47,15 @@ and keep `json-formatted` for output a person reads.
 
 Three things worth knowing beyond the table:
 
-- `strkey decode` and `strkey encode` emit JSON only. There is no `--output` flag and no text mode.
-  A decoded `G...` address comes back as `{"public_key_ed25519": "<hex>"}`.
+- `strkey decode` and `strkey encode` have no `--output` flag, and they are not symmetric.
+  `strkey decode` emits JSON: a decoded `G...` address comes back as
+  `{"public_key_ed25519": "<hex>"}`. `strkey encode` takes that JSON as its input argument and emits
+  a bare strkey string with no JSON wrapper at all.
+- **`tx send` has no `--output` flag.** Passing one exits `2`. It always writes the indented
+  multi-line shape, around 11 KB for a one-operation payment, so the compact `json` this page tells
+  you to prefer is not available on the one command that returns a submission receipt. Parse the
+  indented form, or take the hash from `token transfer` or the stderr signing line instead. See
+  [Commands](commands.md) for the keys it returns.
 - `tx fetch fee` defaults to `table`, not `json`, unlike every other `tx fetch` subcommand. Pass
   `--output json` explicitly if your agent needs to parse it.
 - **`json-formatted` is not JSON on any `tx fetch` subcommand.** All four prepend a human header to
@@ -128,7 +140,7 @@ Known `type` values, from the `token` command source:
 | `sac_not_deployed` | The Stellar Asset Contract for this classic asset has not been deployed yet. The error carries a hint pointing at `stellar contract asset deploy --asset <ASSET> --source-account <IDENTITY>`. `--source-account` is required on that command; the hint does not run without it. |
 | `contract_not_found` | Defined in the `token` command source, but not reached through the `token` commands in testing. A nonexistent contract address returned `config` instead (see above). Do not rely on this type to detect a missing contract. |
 | `config` | A resolution or configuration problem: an unparseable `--id`, an unknown alias, or a well-formed but nonexistent `C…` contract address. This, not `contract_not_found`, is the type you actually get for a missing contract, with `message: "contract not found: <ID>"`. |
-| `network` | The RPC endpoint could not be reached or returned a network-level failure. |
+| `network` | Documented, but never observed. Twelve network-level failures across both builds all returned `invoke` instead. Do not key retry logic on this value. |
 | `invalid_address` | A `--from`, `--to`, `--spender`, or `--account` value is not a valid address. `--account` is the one that matters for reads: an unknown alias returns `Account alias "<NAME>" not Found`. |
 | `invoke` | The contract call itself failed during simulation or submission. Check the `message` field's embedded diagnostic event log for the actual cause. Two you will meet often: `Error(Contract, #13)`, `"trustline entry is missing for account"`, for a classic asset with no trustline or no account at all; and `Error(Contract, #6)`, `"account entry is missing"`, for the native asset with no account at all. Both are `invoke`, so you cannot branch on `type` alone to tell them apart. |
 | `internal` | An unexpected CLI-internal error. |
@@ -156,10 +168,61 @@ substrings in stderr text. There is no discriminated error type outside `token`.
 obstacle to programmatic error handling in the CLI today, and it is worth flagging to your agent's
 error-handling logic explicitly rather than assuming every command behaves like `token`.
 
+## A containerized build borrows stderr for the engine's output
+
+`stellar contract build --image <IMAGE>` shells out to the container engine, and `--pull` makes it
+pull first. The engine writes pull progress to its own stdout, and the CLI redirects that to stderr
+so the CLI's stdout stays clean. Measured on `f1adb979` against Docker 29.8.0, stdout was zero bytes
+in every case below.
+
+```console
+$ stellar contract build --image docker.io/library/alpine:latest --pull   # 1>out 2>err
+latest: Pulling from library/alpine          # all of this on stderr
+a9986cd6f37d: Pull complete
+Digest: sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+Status: Downloaded newer image for alpine:latest
+```
+
+A pull that fails exits `1` with the engine's own message followed by the CLI's, both on stderr:
+
+```console
+$ stellar contract build --image docker.io/stellar/definitely-not-a-real-image:v0 --pull
+Error response from daemon: pull access denied for stellar/definitely-not-a-real-image, ...
+❌ error: could not pull image docker.io/stellar/definitely-not-a-real-image:v0
+```
+
+Without `--pull` there is no pull output at all: the build uses the local image and goes straight to
+the container, matching `docker run`.
+
+`--quiet` behaves here exactly as the section below describes, and this is the case where it costs
+most. A failed containerized build under `-q` writes zero bytes to stdout *and* zero bytes to
+stderr, so neither `could not pull image` nor any later build error reaches you. The exit code is
+the entire result. Confirmed live on both the failed-pull and failed-toolchain paths.
+
 ## Exit codes
 
-`0` means success. Any non-zero exit means failure. The CLI does not use exit codes to distinguish
-failure classes beyond that binary.
+`0` means success. Non-zero means failure, and the CLI separates two classes of failure:
+
+| Exit | Means | What an agent should do |
+|---|---|---|
+| `0` | Success | Continue |
+| `1` | Runtime failure. The invocation was well formed and something about the world caused it: an RPC error, a missing account, a failed simulation, a rejected submission | Inspect, and retry only where the retry rules allow it |
+| `2` | Malformed invocation. An unrecognized subcommand, an unknown flag, an invalid value for a flag | Stop and escalate. Retrying the same command verbatim cannot succeed |
+
+Measured across 104 error cases on both builds. The runtime direction held without exception: every
+runtime failure exited `1`. The malformed direction held in 24 of 26 cases per build, and there is
+one known counterexample.
+
+**`xdr decode --type <invalid>` and `xdr encode --type <invalid>` exit `1`, not `2`, and print the
+`❌` prefix.** That single case defeats both discriminators at once. Every other invalid-flag-value
+case exits `2`, including `--input bogus` on the same command.
+
+Otherwise the two classes are distinguishable in the text as well: exit `2` prints `error: ...` with
+no emoji, a runtime failure prints `❌ error: ...`.
+
+Treat all of this as current observed behavior rather than a guaranteed contract, since it comes
+from the argument parser rather than from anything the CLI promises. Branch on it, and still handle
+the general non-zero case.
 
 `stellar message verify` is a clean, verified example of both paths:
 
@@ -294,18 +357,34 @@ TX=$(stellar token transfer --id native --from agent-1 --to <ADDRESS> --amount 1
 
 ## Telling `#13` from `#6`
 
-`#6` `"account entry is missing"` comes only from a native query and unambiguously means the account
-does not exist. `#13` `"trustline entry is missing for account"` comes from a classic-asset query and
-is ambiguous: a funded account with no trustline and a nonexistent account both produce it.
+`#6` `"account entry is missing"` comes only from a native query and means the account does not
+exist **on the network you queried**. It says nothing about any other network. A live, funded
+mainnet account queried against testnet returns `#6` byte-identically to an address that has never
+existed anywhere; this was measured against a mainnet account holding 4.3800772 XLM.
 
-To disambiguate, query the native balance of the same address:
+`#13` `"trustline entry is missing for account"` comes from a classic-asset query and is ambiguous in
+a second way: a funded account with no trustline and a nonexistent account both produce it.
+
+To disambiguate `#13`, query the native balance of the same address, and pass `--network`
+explicitly, because an unset network resolves to testnet silently:
 
 ```bash
 stellar token balance --id native --account <ADDRESS> --network <NET> --output json
 ```
 
-`#6` means the account does not exist, so run `stellar keys fund <NAME> --network testnet`. A number
-means the account exists and only needs a trustline.
+A number means the account exists and only needs a trustline.
+
+`#6` means check the network before you do anything else. Re-run the same query against the network
+the account is supposed to be on. Only once the address returns `#6` on the network you actually
+meant is it a missing account, and only then does funding it make sense:
+
+```bash
+stellar keys fund <NAME> --network testnet
+```
+
+Running `keys fund` on a `#6` you have not scoped creates a real, separate account on the wrong
+network. It then returns a balance, which reads as the problem being fixed. It is not: the funds you
+were looking for are still on the other network, and you have made a decoy.
 
 ## Related pages
 

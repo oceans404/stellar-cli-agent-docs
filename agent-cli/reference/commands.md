@@ -5,9 +5,11 @@ keywords: [Stellar, CLI, reference, commands, stellar token, stellar tx, stellar
 
 # Commands reference
 
-Every command below was run with `--help` against `stellar` 28.0.0 on the local machine. Flags
-shared by many commands (global, RPC, transaction, and signing options) are documented once in
-their own sections and referenced from each command family rather than repeated per command.
+Every command below was run with `--help` against `stellar` 28.0.0 on the local machine. Two builds
+were probed: the 28.0.0 release at commit `300aaf69`, and a build from `main` at commit `f1adb979`.
+Where they differ, the row says so. Flags shared by many commands (global, RPC, transaction, and
+signing options) are documented once in their own sections and referenced from each command family
+rather than repeated per command.
 
 Each command is marked one of:
 
@@ -53,14 +55,34 @@ Present on any command that talks to an RPC endpoint.
 
 ## Transaction options
 
-Present on any command that builds or submits a transaction.
+Present on the `stellar tx` family: `tx new <OPERATION>`, `tx operation add <OPERATION>`, and the
+commands that submit them.
+
+They are **not** present on `stellar token` writes. `token transfer` and `token approve` build and
+submit a transaction and accept none of these flags, so their fee cannot be capped and they have no
+`--build-only`. A `stellar token` write routes through the Stellar Asset Contract and costs a
+roughly a hundred times the 100-stroop classic default, so the uncappable fee is also the larger
+one. The exact figure varies with the ledger entries touched rather than with the asset, so do not
+budget from a single quoted number. Where you need a fee ceiling or an unsigned envelope, use `stellar tx new payment`
+instead.
 
 | Flag | Required | Description |
 |---|---|---|
-| `-s, --source-account <SOURCE_ACCOUNT>` | Yes, wherever it appears | Alias `--source`. Accepts an identity (`--source agent-1`), a public key (`--source <ADDRESS>`), a muxed account (`--source <MUXED_ADDRESS>`), a secret key, or a seed phrase. Also signs the final transaction unless `--build-only` is passed, in which case signing with a bare public key fails. Env `STELLAR_ACCOUNT`. |
+| `-s, --source-account <SOURCE_ACCOUNT>` | Required, but see below | Alias `--source`. Accepts an identity (`--source agent-1`), a public key (`--source <ADDRESS>`), a muxed account (`--source <MUXED_ADDRESS>`), a secret key, or a seed phrase. Also signs the final transaction unless `--build-only` is passed, in which case signing with a bare public key fails. Env `STELLAR_ACCOUNT`. |
 | `--fee <FEE>` | No | Deprecated. Use `--inclusion-fee`. Fee in stroops. Env `STELLAR_FEE`. |
 | `--inclusion-fee <INCLUSION_FEE>` | No | Maximum fee for transaction inclusion, in stroops. Defaults to `100` if no flag, env var, or saved default is set. Env `STELLAR_INCLUSION_FEE`. |
 | `--build-only` | No | Builds the transaction and writes unsigned base64 XDR to stdout. Submits nothing. |
+
+**`--source-account` is required and can be satisfied without you typing it.** The requirement is met
+by `[defaults] identity` in `~/.config/stellar/config.toml`, or by `STELLAR_ACCOUNT`, so a command
+that names no source still runs and originates from whatever that resolves to. `--help` prints the
+resolved value, as in `[env: STELLAR_ACCOUNT=alice]`, which reads like documentation and is a live
+binding. Measured: `contract deploy`, `contract invoke --send yes`, and `contract asset deploy` all
+proceed with no source named. `tx operation add` does not, and leaves the operation source null to
+inherit the transaction source.
+
+Run `stellar env` before any write to see what you would be spending from, and pass `--source`
+explicitly in anything scripted.
 
 ## Signing options
 
@@ -90,6 +112,7 @@ cost to stderr), and `--auth-mode <enforce|root|non-root>` (env `STELLAR_AUTH_MO
 | Variable | Description |
 |---|---|
 | `STELLAR_ACCOUNT` | Default for `--source-account`. |
+| `STELLAR_OPERATION_SOURCE_ACCOUNT` | Default for `--operation-source-account` on `stellar tx operation add`. |
 | `STELLAR_NETWORK` | Default for `--network`. |
 | `STELLAR_RPC_URL` | Default for `--rpc-url`. |
 | `STELLAR_RPC_HEADERS` | Default for `--rpc-header`. |
@@ -186,6 +209,11 @@ Also accepts [RPC options](#rpc-options).
 
 Read-only. `--id <ID>` (required), `--output <text|json|json-formatted>` (default `text`). Also
 accepts [RPC options](#rpc-options).
+
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` in this section are
+merged but not in the 28.0.0 release. On a release install each exits `2` with
+`error: unrecognized subcommand`. They need a build from `main`, and bare `stellar` resolves to the
+release on most machines. See [Quickstart step 1](../quickstart.md).
 
 ### `stellar token symbol`
 
@@ -325,8 +353,17 @@ stellar tx new create-claimable-balance --source agent-1 --amount 10000000 \
 ### `stellar tx operation add`
 
 Local edit of an existing transaction envelope (submits nothing by itself). Appends one operation
-to the envelope read from stdin. Accepts the same 22 operations and flags as `stellar tx new`,
-under `stellar tx operation add <OPERATION>`. `stellar tx op add` is an accepted short form.
+to the envelope read from stdin. Accepts the same 22 operations as `stellar tx new`, under
+`stellar tx operation add <OPERATION>`. `stellar tx op add` is an accepted short form.
+
+It takes one flag `stellar tx new` does not:
+
+| Flag | Required | Description |
+|---|---|---|
+| `--operation-source-account <OPERATION_SOURCE_ACCOUNT>` | No | Alias `--op-source`. Sets the source account for this operation only, rather than for the transaction. This is what lets one transaction carry operations that different accounts authorize, which every sponsorship pattern needs. Env `STELLAR_OPERATION_SOURCE_ACCOUNT`. |
+
+Without it, every appended operation inherits the transaction's source. With it, the operation
+carries its own `source_account` in the envelope and that account must also sign.
 
 It does not raise the transaction's fee as it adds operations, so a multi-operation transaction
 composed this way is underfunded by default and fails with `TxInsufficientFee`. Set the fee for the
@@ -512,6 +549,43 @@ keypair.
 
 Tools for smart contract developers.
 
+### `--id` versus `--contract-id`
+
+On a build from `main`, the canonical spelling of the contract-selection flag is `--contract-id`,
+and `--id` is a visible alias for it on `contract invoke`, `read`, `extend`, `restore`, `fetch`, and
+`alias add`. On the 28.0.0 release those six commands accept only `--id`; `--contract-id` exits `2`
+there with `error: unexpected argument '--contract-id' found`.
+
+`--id` therefore works on both builds and `--contract-id` does not, which is why every example on
+this page still uses `--id`. The CLI's own agent guide (`stellar skill`) makes the same call: it
+tells agents to prefer `--id` everywhere.
+
+Two things this rename does **not** touch:
+
+- The whole `stellar token` family. `token balance`, `transfer`, `name`, `symbol`, `decimals`,
+  `approve`, and `allowance` still take `--id`, with no `--contract-id` spelling on either build.
+  The flag there names a token, not a contract, and accepts `native` and `CODE:ISSUER` too.
+- `stellar events --id`, `stellar cache actionlog read --id`, and
+  `stellar ledger entry fetch claimable-balance|liquidity-pool --id`. Those name an event filter, a
+  cache entry, and a ledger entry, not a contract.
+
+`stellar contract info` already used `--contract-id` with an `--id` alias on the release, so nothing
+changed for it.
+
+The environment variable does not follow the alias everywhere, which is easy to assume and wrong.
+All six commands carry `[aliases: --id]`, but only `contract invoke` and `contract fetch` also carry
+`[env: STELLAR_CONTRACT_ID=]`. `contract info` reads it as well. `contract read`, `extend`,
+`restore`, and `alias add` do not, so the variable being set does not satisfy the requirement:
+
+```console
+$ STELLAR_CONTRACT_ID=CCR6QKTW… stellar contract read --key COUNTER --network testnet
+error: the following required arguments were not provided:
+  --contract-id <CONTRACT_ID>
+```
+
+That exits `2` while the same environment satisfies `contract invoke`. Pass the contract explicitly
+on the four commands that ignore the variable.
+
 ### `stellar contract build`
 
 Read-only network-wise, writes wasm files locally. Compiles a Cargo workspace to `wasm32v1-none`.
@@ -529,12 +603,52 @@ Read-only network-wise, writes wasm files locally. Compiles a Cargo workspace to
 | `--no-default-features` | No | Disables default features. |
 | `--print-commands-only` | No | Prints the build commands without executing them. |
 | `--image <IMAGE>` | No | Runs the build inside this container image against the bind-mounted working tree, instead of locally. |
-| `--pull` | No | Pulls `--image` before building, to refresh a moving tag. |
+| `--pull` | No | Pulls `--image` before building, to refresh a moving tag. Without it the build uses the image already present locally and does not pull, matching `docker run`, so a digest-pinned or locally built image is used as-is. A failed pull exits non-zero with `could not pull image <IMAGE>`. |
 | `-d, --docker-host <DOCKER_HOST>` | No | Overrides the default Docker host path. Env `DOCKER_HOST`. |
 | `--engine <docker\|apple-container>` | No | Container engine to use. Default `docker`. Env `STELLAR_CONTAINER_ENGINE`. |
 | `--cpus <CPUS>` | No | Limits container CPUs. Must be a whole number for Apple's `container` engine. |
 | `--memory <MEMORY>` | No | Limits container memory, for example `2g` or `512m`. |
 | `--meta <META>` | No | Adds a key-value pair to the contract's `contractmetav0` custom section. |
+
+### `stellar contract build archive`
+
+**main build only.** Absent from the 28.0.0 release, where `contract build archive` exits `2` with
+`error: unexpected argument 'archive' found`.
+
+Writes files locally, no network call. Produces a gzipped tarball of the current working directory
+and prints the SHA-256 that SEP-58 calls `source_sha256`. It honors the project's `.gitignore` and
+`.ignore`, and always skips `.git`. Run it from the project or workspace root you want archived.
+
+| Flag | Required | Description |
+|---|---|---|
+| `-o, --out-file <OUT_FILE>` | Yes, unless `--dry-run` | Where to write the gzipped tarball. |
+| `--dry-run` | No | Lists the entries that would be archived and computes `source_sha256` without writing a file. |
+
+Entries are archived under a `source/` prefix, and the tarball is written at mode `0600`.
+
+The two modes split their output across streams differently, which matters if you script this:
+
+```console
+$ stellar contract build archive --dry-run 2>/dev/null   # stdout only
+📄 source/.gitignore
+📄 source/Cargo.toml
+📄 source/src/main.rs
+
+$ stellar contract build archive --dry-run 2>&1 1>/dev/null   # stderr only
+ℹ️  3 files
+ℹ️  source_sha256 9265be17f9ebb2db4ed7bb29eddc15b8a77eca40b4537b543f9537eba58b0b75
+```
+
+The file list goes to stdout. The count and the `source_sha256` go to stderr. A write run (`-o`)
+prints nothing at all to stdout; its `✅ Wrote source archive <PATH> (source_sha256 <HASH>)` line is
+on stderr. Capture stderr to read the hash either way.
+
+`-q` suppresses the `ℹ️` and `✅` lines, and therefore the hash. Under `-q` a dry run still prints
+the `📄` file list on stdout, and a write run prints nothing on either stream. Do not pass `-q` when
+you need the hash.
+
+Omitting both `-o` and `--dry-run` exits `2` with `error: the following required arguments were not
+provided: --out-file <OUT_FILE>`.
 
 ### `stellar contract init <PROJECT_PATH>`
 
@@ -577,7 +691,7 @@ Generates a typed CLI from the contract's own schema on the fly; see
 
 | Flag | Required | Description |
 |---|---|---|
-| `--id <CONTRACT_ID>` | Yes | Contract to invoke. Env `STELLAR_CONTRACT_ID`. |
+| `--id <CONTRACT_ID>` | Yes | Contract to invoke. Env `STELLAR_CONTRACT_ID`. Spelled `--contract-id` on a `main` build, where `--id` is an alias for it; see [`--id` versus `--contract-id`](#--id-versus---contract-id). |
 | `--is-view` | No | Deprecated. Use `--send=no`. |
 | `--send <default\|no\|yes>` | No | `default` sends a transaction only if simulation shows ledger writes, published events, or required auth; `no` never sends, returning the simulation result; `yes` always sends. Env `STELLAR_SEND`. |
 
@@ -591,7 +705,7 @@ Read-only. Prints a contract-data ledger entry's current value.
 | Flag | Required | Description |
 |---|---|---|
 | `--output <string\|json\|xdr>` | No | Default `string`. `json` is advertised but broken; see below. |
-| `--id <CONTRACT_ID>` | No | Contract that owns the data entry. Extends the contract's own instance if no key is given. |
+| `--id <CONTRACT_ID>` | No | Contract that owns the data entry. Extends the contract's own instance if no key is given. Spelled `--contract-id` on a `main` build, where `--id` is an alias for it. |
 | `--key <KEY>` | No | Storage key, symbols only. |
 | `--key-xdr <KEY_XDR>` | No | Storage key as base64-encoded XDR. |
 | `--wasm <WASM>` / `--wasm-hash <WASM_HASH>` | No | Path to wasm, or a wasm hash, if reading against code rather than an instance. |
@@ -621,7 +735,13 @@ Submits a transaction. Restores an evicted contract-data entry. Same key and dur
 
 Read-only. Downloads a contract's wasm binary. `--id <CONTRACT_ID>` (env `STELLAR_CONTRACT_ID`),
 `--wasm-hash <WASM_HASH>`, `-o, --out-file <OUT_FILE>` (defaults to stdout). Accepts
-[RPC options](#rpc-options).
+[RPC options](#rpc-options). `--id` is spelled `--contract-id` on a `main` build, where `--id` is an
+alias for it.
+
+Passing neither selector errors. The message names whichever spelling the build considers canonical:
+`error: must provide one of --wasm-hash, or --id` on the 28.0.0 release, and `error: must provide one
+of --wasm-hash, or --contract-id` on a `main` build. Match on `must provide one of`, not on the flag
+name.
 
 ### `stellar contract info`
 
@@ -669,8 +789,8 @@ Mutates local config, per network.
 
 | Command | Description |
 |---|---|
-| `contract alias add <ALIAS> --id <CONTRACT_ID>` | Saves an alias for a contract ID. `--overwrite` replaces an existing alias of the same name. |
-| `contract alias remove <ALIAS>` | Removes a saved alias. |
+| `contract alias add <ALIAS> --id <CONTRACT_ID>` | Saves an alias for a contract ID. `--overwrite` replaces an existing alias of the same name. `--id` is spelled `--contract-id` on a `main` build, where `--id` is an alias for it. |
+| `contract alias rm <ALIAS>` | Removes a saved alias. Named `remove` on the 28.0.0 release. A `main` build renamed it to `rm` and kept `remove` as a command alias, so `remove` works on both builds and `rm` works only on `main`. Exits `1` if no such alias exists on the current network: `error: no contract found with alias '<ALIAS>' for network '<PASSPHRASE>'`. |
 | `contract alias show <ALIAS>` | Prints the contract ID an alias resolves to. |
 | `contract alias ls` | Lists every saved alias, grouped by network. |
 
@@ -681,11 +801,36 @@ Writes files locally. Generates client bindings from a contract's schema.
 | Command | Flags |
 |---|---|
 | `contract bindings rust --wasm <WASM>` | `--wasm` is required. No other flags. |
-| `contract bindings typescript` | `--wasm <WASM>`, `--wasm-hash <WASM_HASH>`, or `--contract-id <CONTRACT_ID>` (alias `--id`), exactly one; `--output-dir <OUTPUT_DIR>` (required); `--overwrite`. |
-| `contract bindings python` \| `java` \| `flutter` \| `swift` \| `php` | No flags beyond `--help` in this build. |
+| `contract bindings typescript` | **Deprecated on a `main` build.** `--wasm <WASM>`, `--wasm-hash <WASM_HASH>`, or `--contract-id <CONTRACT_ID>` (alias `--id`), exactly one; `--output-dir <OUTPUT_DIR>` (required); `--overwrite`. |
+| `contract bindings python` \| `java` \| `flutter` \| `swift` \| `php` | Stubs. No flags, and they generate nothing; see below. |
+| `contract bindings kmp` | **main build only.** A sixth stub; see below. |
 
-Verify the exact flag set for `python`, `java`, `flutter`, `swift`, and `php` with `stellar contract bindings <LANGUAGE> --help` before scripting against them, since their surface is
-noticeably thinner than `rust` and `typescript` in this release.
+Only `rust` and `typescript` generate a file. The other six are registered subcommands that take no
+flags, write nothing, and exit `1` with the same sentence, their own language substituted:
+
+```text
+❌ error: python binding generation is not implemented in the stellar-cli, but is available via the tool located here: https://github.com/lightsail-network/stellar-contract-bindings
+```
+
+This is true on the 28.0.0 release as well as on a `main` build. The five older stubs are not new;
+`kmp` joins them. A subcommand appearing in `contract bindings --help` is not evidence it works, so
+run it once before scripting against it. For those six languages the answer is the external
+[`stellar-contract-bindings`](https://github.com/lightsail-network/stellar-contract-bindings) tool.
+
+A `main` build deprecates `contract bindings typescript`. It still runs and still generates the
+package, but it now prints this to stderr before doing any work:
+
+```text
+⚠️  `stellar contract bindings typescript` is deprecated. Use the JavaScript Stellar SDK instead: https://github.com/stellar/js-stellar-sdk#cli
+```
+
+The same sentence is in its `--help` output and in the `contract bindings` subcommand list, so a
+`--help` probe that greps for a description now matches `⚠️ Deprecated`. The 28.0.0 release prints
+no warning.
+
+On the 28.0.0 release, `contract bindings kmp` is not listed at all and exits `2` with `error:
+unrecognized subcommand 'kmp'`. That is the only difference between the builds for this target.
+Neither one generates Kotlin Multiplatform bindings.
 
 ## Generated per-contract CLI
 
@@ -928,6 +1073,29 @@ source <(stellar completion --shell bash)
 
 Read-only. `--only-version`, `--only-version-major`, `--only-commit` each narrow the output to
 one field.
+
+## `stellar skill`
+
+**main build only.** Absent from the 28.0.0 release, where it exits `2` with `error: unrecognized
+subcommand 'skill'`.
+
+Read-only, no flags, no network call. Prints a 128-line Markdown guide to stdout that tells an AI
+agent how to drive the CLI idiomatically. It is a static document compiled into the binary, not
+generated from the command tree, so it does not enumerate the full surface and it does not reflect
+your local config.
+
+```bash
+stellar skill > stellar-cli-skill.md
+```
+
+What it covers: `network use` and `keys use` instead of repeating flags, contract aliases instead of
+shell variables holding contract IDs, `--send=no` for reads, the stdout-versus-stderr split, TTL and
+archival, and `container start local`. What it does not cover: the `stellar token` family, `tx new`,
+SEP-53 message signing, mainnet, or anything about spend authority.
+
+That last gap is the reason to read it alongside these pages rather than instead of them. It is a
+conventions guide for a contract developer's agent, not a safety or payments guide. See
+[Skills](../skills.md) for how it relates to the Stellar CLI skill package.
 
 ## Related pages
 

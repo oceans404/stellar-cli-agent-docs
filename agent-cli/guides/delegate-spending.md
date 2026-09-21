@@ -8,6 +8,10 @@ keywords: [Stellar, agent, allowance, approve, delegated spending, authority, mu
 Give an agent the ability to spend some of your money, deciding in advance how much it can take
 and whether it needs you present to take it.
 
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
+in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
+most machines. See [Quickstart step 1](../quickstart.md).
+
 Two questions settle which setup you want, and neither is "which feature should I use". Can the
 agent act without you, and what is the worst case if it goes wrong.
 
@@ -104,7 +108,7 @@ failure.
 Do not match on `TxFailed([OpBadAuth])`. That is a paraphrase, not output: the operation-level
 failure prints as a multi-line Rust debug dump, so match on `OpBadAuth` alone.
 
-```
+```console
 ❌ error: transaction submission failed: TxFailed(
     VecM(
         [
@@ -175,7 +179,7 @@ valid payment, so pair it with an allowance when you need both.
 
 ### Ask your agent
 
-```
+```text
 Grant agent-1 an allowance of 25 USDC from treasury on testnet USDC, expiring in about a day, then
 show me the allowance.
 ```
@@ -256,7 +260,7 @@ An over-cap draw also has a second, costlier shape. Everything above assumes the
 before submission, which is what catches it for free. A transaction signed while the allowance was
 still good and submitted after it was revoked skips that check and fails at consensus instead:
 
-```
+```console
 ❌ Error event: [{"symbol":"error"},{"error":{"contract":9}}] = {"vec":[{"string":"not enough allowance to spend"},{"i128":"0"},{"i128":"100000000"}]}
 fee_charged: 17315, result: TxFailed([OpInner(InvokeHostFunction(Trapped))])
 ```
@@ -266,11 +270,11 @@ the error event, and treat a fee-charged failure as proof the network refused ra
 client.
 
 `contract invoke --id` is stricter than `token --id`: it takes only a `C...` contract address or an
-alias, not `CODE:ISSUER`, so resolve the address first. `contract id asset` is a pure read and needs
-no source account:
+alias, not `CODE:ISSUER`, so resolve the address first. For XLM the asset name is `native`, which has
+no `CODE:ISSUER` form. `contract id asset` is a pure read and needs no source account:
 
 ```bash
-SAC=$(stellar contract id asset --asset <CODE:ISSUER> --network <NETWORK>)
+SAC=$(stellar contract id asset --asset <CODE:ISSUER|native> --network <NETWORK>)
 stellar contract invoke --id "$SAC" --source <SPENDER> --network <NETWORK> \
   -- transfer_from \
   --spender <SPENDER_ADDRESS> \
@@ -302,8 +306,16 @@ stellar contract read --id <SAC> --durability temporary --network <NETWORK> \
 
 That returns the amount and the deadline together, for example
 `{"amount":"80000000","live_until_ledger":4627378}`. Note `--durability temporary`: an allowance is
-not persistent storage, and once the deadline passes the entry is evicted and this returns
-`no matching contract data entries were found`.
+not persistent storage.
+
+**Do not read this as an audit of what the agent can spend.** The entry is not evicted when the
+deadline passes. `live_until_ledger` is the allowance's own deadline; the ledger entry carries a
+separate TTL that runs further out, measured at 718 ledgers beyond it in one case. Past the deadline
+this command still returns exit 0 and the original `amount`, for authority the network will not
+honor for one stroop.
+
+`stellar token allowance` returns `0` correctly at that same moment. Use it, not `contract read`, to
+answer what an agent may still spend.
 
 From the grant transaction, if you have or can find its hash:
 

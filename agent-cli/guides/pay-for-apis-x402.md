@@ -26,7 +26,7 @@ of this page.
 
 ## Ask your agent
 
-```
+```text
 Pay for https://stellar.org/x402-demo/api/protected/testnet with x402 on Stellar testnet using
 USDC, then show me the response.
 ```

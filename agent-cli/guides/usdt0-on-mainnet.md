@@ -7,6 +7,10 @@ keywords: [Stellar, USDT0, mainnet, USDT, LayerZero, OFT, trustline, clawback, l
 
 Get USDT0 into an account on mainnet, hold it, and move some of it.
 
+**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
+in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
+most machines. See [Quickstart step 1](../quickstart.md).
+
 This is the only page here that spends real money, and the commands are not the hard part. The hard
 part is that there is very little USDT0 on Stellar to buy, so acquiring it is where people lose
 money on price.
@@ -42,7 +46,7 @@ That returns `CBSJZEIO5C7KC2SF3MKSNXXJSW5G3VTNBX4ATMKUI3B2MR4JKM4R26YF`, matchin
 
 ## Ask your agent
 
-```
+```text
 Check the USDT0 balance of GATISXX6BZ6NC7IKQBY37CJD4SOZL3CYZJWXEDG6JVIY4WBS6KXJHN6Q on mainnet,
 then tell me what the current XLM to USDT0 rate is and how deep the market is.
 ```
