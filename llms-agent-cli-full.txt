@@ -1863,9 +1863,10 @@ handshake itself runs in your agent's own code, through the `@x402/stellar` pack
 This guide uses `https://stellar.org/x402-demo/api/protected/testnet`, Stellar's own x402 demo
 endpoint on testnet, so you can run the flow end to end before pointing it at the API you actually
 care about. It prices access at 0.01 testnet USDC and sponsors the transaction fee. Every step below
-was run against it with `@x402/stellar` and `@x402/fetch`. Both declare `engines.node >= 20`, so
-provision Node 20 or later. On Node 18 `npm install` prints `EBADENGINE` for both packages and a
-payment still settles, so the warning is not a stopping point, but do not plan around it.
+was run against it with `@x402/stellar` and `@x402/fetch`. Provision Node 20 or later: on Node 18,
+`npm install` prints `EBADENGINE` for `@x402/stellar` and five transitive dependencies, whose
+declared floors run from `>=20` to `>=22`. A payment still settles on 18, so the warning is not a
+stopping point, but do not plan around it.
 
 **Skill:** `workflows/pay-for-apis-x402.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
 of this page.
@@ -2030,9 +2031,13 @@ goes through the `stellar` binary.
    ```
 
    The `transfer` event names the payer, the recipient, the asset, and the amount as an `i128`.
-   Check it against the challenge you read in step 2. Then re-read the balance from step 4: it
-   should be down by exactly the challenge's `amount`, with the native balance unchanged when
-   `areFeesSponsored` is true.
+   Check it against the challenge you read in step 2. Then re-read both balances. The asset balance
+   from step 4 should be down by exactly the challenge's `amount`, and the native balance should be
+   unchanged when `areFeesSponsored` is true:
+
+   ```bash
+   stellar token balance --id native --account agent-1 --network testnet
+   ```
 
 ## Facilitators
 
