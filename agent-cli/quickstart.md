@@ -287,6 +287,11 @@ of the five subcommands that need the main build, so call it by its full path.
 An `--amount` below the smallest unit is not rejected. `--amount 1` submits 0.0000001 XLM and exits
 0, so a missing multiplier looks like a success.
 
+`--amount 0` is the sharper case: it exits 0, returns a transaction hash, lands as `tx_success`, and
+charges the full fee while moving nothing. Measured on `f1adb979`, the source account fell by exactly
+13745 stroops and no value changed hands. `tx new payment --amount 0` rejects the same input with
+`Payment(Malformed)` and exit 1, so the classic path has a guard the Soroban path does not.
+
 The balance line above is what catches that, so read it rather than just running it. After a 1 XLM
 transfer `agent-1` should fall by 1 XLM plus the fee. If it fell by a fraction of a stroop instead,
 the transfer went through with the wrong amount. `tx fetch result` will not tell you: it reports

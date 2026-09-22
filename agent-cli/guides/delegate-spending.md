@@ -204,17 +204,28 @@ show me the allowance.
 
    If you did not record it, see [Reading an allowance back](#reading-an-allowance-back).
 
-3. Grant the allowance:
+3. Confirm the spender exists before you grant anything. This is the only check that catches a
+   typo'd or never-funded spender, and it only works before the `approve` lands:
+
+   ```bash
+   stellar token balance --id native --account <SPENDER> --network <NETWORK> --output json
+   ```
+
+   A number, even `0`, means the address exists on this network. `Error(Contract, #6)` means it does
+   not. Stop and ask rather than approving against it.
+
+4. Grant the allowance:
 
    ```bash
    stellar token approve --id <TOKEN> --from <OWNER> --spender <SPENDER> \
      --amount <AMOUNT> --expiration-ledger <LEDGER> --network <NETWORK>
    ```
 
-4. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
-   stored, and check the spender address character by character against the one you meant:
-   `approve` to an address that was never funded succeeds, and the read-back then confirms the
-   typo as though it were correct.
+5. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
+   stored. Note what this step cannot do: `approve` to an address that was never funded succeeds,
+   and every post-hoc check then confirms the typo as though it were correct. `token allowance`,
+   `contract read --durability temporary`, `tx fetch events`, and a Horizon scan all report such a
+   grant live, correctly sized, and correctly dated. Step 3 is the only thing that catches it.
 
    ```bash
    stellar token allowance --id <TOKEN> --from <OWNER> --spender <SPENDER> --network <NETWORK>
