@@ -11,10 +11,8 @@ SDF docs. The point of writing them in MetaMask's shape was to find out where St
 tell and where it does not, and the answer is in `MASTER-DIFF.md`, which is not published in this
 repository.
 
-The agent-facing skill package is a separate repository,
-[oceans404/stellar-cli-skills](https://github.com/oceans404/stellar-cli-skills). Nothing here
-references it by relative path; [agent-cli/skills.md](agent-cli/skills.md) maps the two onto each
-other.
+The agent-facing layer is the CLI's own `stellar skill` subcommand.
+[agent-cli/skills.md](agent-cli/skills.md) covers what it includes and what it leaves out.
 
 ## What is here
 
@@ -37,11 +35,9 @@ docs/
     ├── reference/
     │   ├── architecture.md
     │   ├── authority-model.md
-    │   ├── commands.md
     │   ├── output-and-errors.md
-    │   └── supported-networks.md
-    ├── skills.md                     Map to the separate stellar-cli-skills repo
-    └── troubleshooting.md
+    │   └── troubleshooting.md
+    └── skills.md                     The built-in stellar skill guide
 ```
 
 ## How it maps to MetaMask's IA
@@ -84,9 +80,7 @@ not in the 28.0.0 release.
 ## Known gaps in this set
 
 No guide covers contract development, since that is existing Stellar documentation and not an agent
-concern. No page covers Horizon or RPC directly. `reference/commands.md` documents the command tree
-as of 28.0.0 plus the merged token subcommands, and will drift as soon as
-`mint`, `clawback`, `set-admin`, and `set-authorized` land from PRs #2716 through #2719.
+concern. No page covers Horizon or RPC directly.
 
 ## Review status
 

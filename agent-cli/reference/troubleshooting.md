@@ -5,9 +5,6 @@ keywords: [Stellar, agent, troubleshooting, stellar doctor, stellar CLI, errors]
 
 # Troubleshooting
 
-**Skill:** `workflows/troubleshooting.md` in the [Stellar CLI skill package](skills.md) is the agent-facing version
-of this page.
-
 ## Start with `stellar doctor`
 
 Run this before debugging anything else:
@@ -72,7 +69,7 @@ has just resubmitted a transaction that already succeeded. This is a confirmed d
 hypothetical one.
 
 Fix: never merge stderr into stdout when you intend to parse the result. Redirect stderr
-separately, and capture it rather than discarding it, since the hash you need to confirm on-chain
+separately, and capture it rather than discarding it, since the hash you need to confirm onchain
 state lives on that stderr line:
 
 ```bash
@@ -86,7 +83,7 @@ parse is not evidence the transaction failed:
 stellar tx fetch result --hash <HASH> --network <NET>
 ```
 
-Only retry once you have confirmed the transaction is not already on-chain.
+Only retry once you have confirmed the transaction is not already onchain.
 
 ## Payments and balances
 
@@ -147,7 +144,7 @@ Event log (newest first):
 This is the native-asset (XLM) version of the same underlying problem: the destination account does
 not exist on the network. Three different situations produce it. You ran
 `stellar keys generate <NAME> --network testnet` without `--fund`, so the key is saved locally but
-the account does not exist on-chain. You are querying the wrong network for an account that does
+the account does not exist onchain. You are querying the wrong network for an account that does
 exist. Or the account existed and was merged away, which leaves the same code behind: after a
 successful `account-merge`, a balance read on the source address returns `#6`, and that is the
 cheapest confirmation the merge landed.
@@ -299,14 +296,14 @@ stellar tx sign --sign-with-key <NAME> --network <NET>
 does not meet the operation's threshold fails the same way. This is the expected result when an
 agent signs alone on a co-signed vault, and it is not an error to fix: it is the control working.
 No fee is charged and the source account's sequence number is unchanged, so the same envelope can
-still be co-signed and submitted. See [Delegate spending](guides/delegate-spending.md).
+still be co-signed and submitted. See [Delegate spending](../guides/delegate-spending.md).
 
 Tell the two apart by hashing: a passphrase mismatch changes the envelope hash, a weight shortfall
 does not.
 
 ## Delegated spending
 
-Errors specific to the four patterns in [Delegate spending](guides/delegate-spending.md), each
+Errors specific to the four patterns in [Delegate spending](../guides/delegate-spending.md), each
 measured on testnet.
 
 ### `TxBadAuthExtra` when co-signing
@@ -328,8 +325,7 @@ operations.
 
 ### `Payment(Underfunded)` inside a `TxFeeBumpInnerFailed` dump
 
-Reads as though the fee bump is broken. It is not: the outer fee bump was charged and the inner
-payment failed. The usual cause is a zero-XLM agent sending `native`, because `--asset` defaults to
+The outer fee bump was charged and the inner payment failed. The usual cause is a zero-XLM agent sending `native`, because `--asset` defaults to
 `native` and that account holds none by construction.
 
 Fix: pass `--asset <CODE:ISSUER>` explicitly. A zero-XLM agent spends assets, never XLM.
@@ -386,7 +382,7 @@ authorization entries. Use `--auth-mode enforce` (the default) to catch missing 
 before you sign anything. Use `--auth-mode non-root` while iterating on a contract call whose
 nested authorization you have not wired up yet, so simulation does not block on it.
 
-Since `stellar-cli` 28.0.0, the CLI surfaces the diagnostic events attached to a failed on-chain
+Since `stellar-cli` 28.0.0, the CLI surfaces the diagnostic events attached to a failed onchain
 transaction, not just a failed simulation. Read the `Event log` block in the error message from the
 newest entry down. The first `[Diagnostic Event]` line is almost always the actual cause.
 
@@ -436,6 +432,6 @@ stellar keys secret <NAME>
 
 ## Related pages
 
-- [Output and errors](reference/output-and-errors.md)
-- [Quickstart](quickstart.md)
-- [Authority model](reference/authority-model.md)
+- [Output and errors](output-and-errors.md)
+- [Quickstart](../quickstart.md)
+- [Authority model](authority-model.md)

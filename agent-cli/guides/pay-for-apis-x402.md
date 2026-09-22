@@ -5,27 +5,8 @@ keywords: [Stellar, agent, x402, payments, USDC, SEP-41, CLI]
 
 # Pay for APIs with x402
 
-Call an API that refuses to answer without payment, pay it in USDC, and get the content back.
-Expect to spend 0.01 testnet USDC and to end with a transaction hash proving it settled on-chain.
-
-The payment happens inside your agent's own code, not at the terminal. Your part is giving it a
-funded identity and confirming afterwards that the money actually moved.
-
-x402 is not a `stellar` CLI command. There is no `x402` subcommand, and nothing in the CLI's help
-tree mentions HTTP 402. The CLI's role in an x402 payment is limited to two things: an identity to
-sign with, and SEP-41 token transfers as the settlement rail underneath the protocol. The x402
-handshake itself runs in your agent's own code, through the `@x402/stellar` package.
-
-This guide uses `https://stellar.org/x402-demo/api/protected/testnet`, Stellar's own x402 demo
-endpoint on testnet, so you can run the flow end to end before pointing it at the API you actually
-care about. It prices access at 0.01 testnet USDC and sponsors the transaction fee. Every step below
-was run against it with `@x402/stellar` and `@x402/fetch`. Provision Node 20 or later: on Node 18,
-`npm install` prints `EBADENGINE` for `@x402/stellar` and five transitive dependencies, whose
-declared floors run from `>=20` to `>=22`. A payment still settles on 18, so the warning is not a
-stopping point, but do not plan around it.
-
-**Skill:** `workflows/pay-for-apis-x402.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+Pay an x402-protected API in USDC from your agent's code, and confirm the payment settled
+onchain. The demo below costs 0.01 testnet USDC.
 
 ## Ask your agent
 
@@ -36,7 +17,17 @@ USDC, then show me the response.
 
 Your agent's x402 client library reads the server's `402` response, builds a Soroban authorization
 entry for the requested amount, and retries the request with that payment attached. None of this
-goes through the `stellar` binary.
+goes through the `stellar` binary, which has no x402 command. The CLI supplies the signing identity,
+and SEP-41 token transfers settle the payment underneath.
+
+## Before you start
+
+The prompt uses `https://stellar.org/x402-demo/api/protected/testnet`, Stellar's x402 demo
+endpoint. It charges 0.01 testnet USDC and sponsors the transaction fee. Every step below was run
+against it with `@x402/stellar` and `@x402/fetch`.
+
+Use Node 20 or later. On Node 18, `npm install` prints `EBADENGINE` for `@x402/stellar` and five
+transitive dependencies. A payment still settles on 18, but do not plan around it.
 
 ## Steps
 
@@ -167,7 +158,7 @@ goes through the `stellar` binary.
    Capture the body on the first request. Each call pays again: a paid response is not replayable,
    so re-running the script to see output you truncated costs the amount a second time.
 
-7. Confirm settlement on-chain with the hash from that header. `tx fetch result` takes it as
+7. Confirm settlement onchain with the hash from that header. `tx fetch result` takes it as
    `--hash`, not a positional argument:
 
    ```bash
@@ -230,8 +221,8 @@ with a real balance.
 
 ## Common pitfalls
 
-Coinbase's facilitator is testnet-only for Stellar. If a payment fails against it on mainnet, that
-is why, not a bug in your integration.
+Coinbase's facilitator supports Stellar on testnet only. For mainnet, use a facilitator that
+supports Stellar mainnet.
 
 Freighter Mobile does not support x402 yet. The Freighter browser extension does. If your agent
 drives a mobile wallet for signing, x402 is not available through it today.

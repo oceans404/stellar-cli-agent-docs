@@ -39,15 +39,9 @@ const sidebar = {
       items: [
         'reference/architecture',
         'reference/authority-model',
-        'reference/commands',
         'reference/output-and-errors',
-        'reference/supported-networks',
+        'reference/troubleshooting',
       ],
-    },
-    {
-      type: 'doc',
-      id: 'troubleshooting',
-      label: 'Troubleshooting',
     },
   ],
 }

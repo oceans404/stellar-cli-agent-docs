@@ -5,42 +5,16 @@ keywords: [Stellar, agent, balance, token metadata, decimals, CLI]
 
 # Check balances and metadata
 
-Ask what an account holds, and what an unfamiliar token actually is, before touching it.
-
-**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
-in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
-most machines. See [Quickstart step 1](../quickstart.md).
-
-Nothing here moves money or needs a key, so these are the safest commands in the CLI and the right
-first thing to run when you suspect something is misconfigured. They are also the only commands
-that work from a completely fresh install with nothing set up.
-
-`stellar token balance`, `name`, `symbol`, and `decimals` are reads, not transactions. They need no
-key, no funded account, and no signing, because they run as simulations rather than signed
-operations. That is true on testnet from a fresh install. Mainnet is not: the built-in `mainnet`
-entry ships as a placeholder rather than a real RPC URL, so these commands fail on mainnet with
-`Invalid URL Bring Your Own: ...` until you add a real endpoint:
-
-```bash
-stellar network add mainnet \
-  --rpc-url <YOUR_MAINNET_RPC_URL> \
-  --network-passphrase "Public Global Stellar Network ; September 2015"
-```
-
-Stellar's [RPC providers page](https://developers.stellar.org/docs/data/apis/rpc/providers) lists the endpoints to choose from. The public
-`https://mainnet.sorobanrpc.com` needs no signup and is enough for reads.
-
-USDC's testnet id is `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`. The examples
-below use it.
-
-**Skill:** `references/token.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+Check what an account holds and what a token is before touching it. These are reads, so they
+need no key, no funded account, and no signing.
 
 ## Ask your agent
 
 ```text
 What are the decimals and symbol for USDC on Stellar testnet, and what does agent-1 hold of it?
 ```
+
+The examples use testnet USDC, `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
 
 ## Steps
 
@@ -65,12 +39,25 @@ What are the decimals and symbol for USDC on Stellar testnet, and what does agen
    stellar token balance --id <TOKEN> --account <ACCOUNT> --network <NETWORK> --decimal
    ```
 
+## Reading on mainnet
+
+The built-in `mainnet` entry ships as a placeholder, so reads fail with
+`Invalid URL Bring Your Own: ...` until you add a real RPC endpoint:
+
+```bash
+stellar network add mainnet \
+  --rpc-url <YOUR_MAINNET_RPC_URL> \
+  --network-passphrase "Public Global Stellar Network ; September 2015"
+```
+
+The public `https://mainnet.sorobanrpc.com` needs no signup and is enough for reads. Stellar's
+[RPC providers page](https://developers.stellar.org/docs/data/apis/rpc/providers) lists others.
+
 ## Two output quirks
 
 For a Stellar Asset Contract, `name` returns the full `CODE:ISSUER` string, not a friendly name.
-For the native asset, both `name` and `symbol` return the literal string `native`. Neither is a
-bug. There is no separate metadata registry backing these reads, so the contract answers with what
-it actually stores.
+For the native asset, both `name` and `symbol` return the literal string `native`. These reads
+return what the contract stores, with no separate metadata registry behind them.
 
 ## Raw units versus decimal
 

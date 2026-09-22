@@ -34,7 +34,7 @@ const config = {
       title: 'Stellar CLI for Agents',
       items: [
         { type: 'docSidebar', sidebarId: 'agentCliSidebar', position: 'left', label: 'Docs' },
-        { href: 'https://github.com/oceans404/stellar-cli-skills', label: 'Skills', position: 'right' },
+        { type: 'doc', docId: 'skills', label: 'Skills', position: 'right' },
         { href: GITHUB_REPO, label: 'GitHub', position: 'right' },
       ],
     },

@@ -5,204 +5,145 @@ keywords: [Stellar, CLI, architecture, simulation, signing, local state, MCP, sk
 
 # Architecture
 
-The CLI is a single static binary that talks directly to a Stellar RPC endpoint. There is no
-account, no session, no server component, and no vendor in the request path. Your agent runs the same
-binary you run.
+The Stellar CLI is a single static binary that communicates directly with a Stellar RPC endpoint. It operates without server components, sessions, accounts, or intermediary proxies. Both human operators and autonomous agents run the exact same binary.
 
-That shape explains most of the CLI's strengths and its one significant weakness. Because nothing sits
-between the agent and the network, composition is easy and nothing can refuse a transaction on your
-behalf. See [Authority model](authority-model.md).
+Because no middleware sits between the client and the network, commands compose cleanly and no third-party service can block or modify transactions. See [Authority model](authority-model.md).
 
-**Skill:** the [Stellar CLI skill package](../skills.md) is the instruction layer this page's
-"Agent integration" section describes.
+## Local State
 
-## Local state
+| Path | Contents |
+| --- | --- |
+| `~/.config/stellar/identity/<NAME>.toml` | Identity keypairs (seed phrase, secret key, or watch-only public key) |
+| `~/.config/stellar/network/<NAME>.toml` | Network configurations (RPC URL and passphrase) |
+| `~/.config/stellar/config.toml` | Global defaults configured via `stellar network use` and `stellar keys use` |
+| OS Keychain | Seed phrases for identities configured with `--secure-store` |
+| Platform Data Directory | Simulation and transaction cache managed by `stellar cache` |
 
-| Path | Holds |
-|---|---|
-| `~/.config/stellar/identity/<NAME>.toml` | One identity per file: a seed phrase, a secret key, or a public key for watch-only |
-| `~/.config/stellar/network/<NAME>.toml` | One network per file: RPC URL and passphrase |
-| `~/.config/stellar/config.toml` | Defaults set by `stellar network use` and `stellar keys use` |
-| OS keychain | Seed phrases for identities created with `--secure-store` |
-| Platform data directory | Simulation and transaction cache, managed by `stellar cache` |
+Run `stellar doctor` to view resolved configuration and data paths for your OS (macOS, Linux, Windows). Override the default config directory using `--config-dir` or `XDG_CONFIG_HOME`.
 
-Run `stellar doctor` to print the resolved config and data directory paths for your platform, which
-differ across macOS, Linux, and Windows. Override the config location with `--config-dir` or
-`XDG_CONFIG_HOME`.
+Identity files are saved in unencrypted plaintext unless created with `--secure-store`. Treat `~/.config/stellar/` as sensitive storage.
 
-Identity files are plaintext unless you created the identity with `--secure-store`. Treat the
-directory as secret material.
+`stellar network use` and `stellar keys use` update global defaults in `config.toml`. These modifications apply machine-wide rather than scoping to a shell session, project directory, or sub-process.
 
-`stellar network use` and `stellar keys use` write to `config.toml` machine-wide. The change is not
-scoped to a shell session, a project directory, or your agent's process. Anyone else's session on
-the same machine picks up the new default the next time they omit `--network` or `--source`. On a
-shared machine, this is invasive in a way that is easy to miss, because the command that sets it
-gives no such warning.
+## Configuration Precedence
 
-## Configuration precedence
+Precedence order (highest to lowest):
 
-Flags beat environment variables, which beat saved defaults. Every network, RPC, signing, and fee
-value has a `STELLAR_*` environment variable, so an agent can be configured entirely through its
-environment with no files written. This is the non-invasive alternative to `network use`/`keys use`
-on a shared machine: it takes precedence over the saved default, and it affects only the process
-that set it.
+1. Command-line flags
+2. Environment variables
+3. Saved configuration defaults (`config.toml`)
+4. Implicit fallbacks
+
+Every network, RPC, signing, and fee parameter maps to a `STELLAR_*` environment variable. Configuring an agent exclusively via environment variables isolates execution state to the active process without modifying global disk configuration.
 
 ```bash
 export STELLAR_NETWORK=testnet
 export STELLAR_ACCOUNT=agent-1
 export STELLAR_NO_CACHE=true
+
 ```
 
-The cache those variables control holds simulations and transactions, which is what `--no-cache`'s
-own help says. It does not cache balance results, so reads are always live and a stale balance is
-not a failure mode to design around.
+`STELLAR_NO_CACHE` and `--no-cache` bypass simulation and transaction caches. Account balances are never cached; read operations always query live network state.
 
-`stellar env` prints what the CLI resolved, with secret-bearing values concealed. Pass `--reveal` to
-print them.
+Run `stellar env` to view resolved configuration values (sensitive values are masked; pass `--reveal` to unmask).
 
-Below flags, environment variables, and saved defaults sits one more layer `stellar env` does not
-report: on a config directory with nothing set, `stellar network` commands still resolve to
-`testnet`, confirmed by a matching ledger ID and sequence between a fresh config directory and an
-explicit `--network testnet`. `stellar env` on that same fresh config prints
-`⚠️  No defaults or environment variables set`, which is accurate about defaults and environment
-variables and silent about this fallback. Omitting `--network` does not fail; it silently succeeds
-against testnet. That is safe today, but it is an accident of the current fallback, not a
-guarantee. The moment anyone runs `stellar network use mainnet` on that machine, the same omission
-resolves to mainnet instead. Pass `--network` explicitly regardless of what the fallback happens to
-be right now.
+### Network Fallback Warning
 
-## Invocation model
+On an unconfigured directory, commands silently fall back to `testnet`, even though `stellar env` reports `⚠️ No defaults or environment variables set`. If a global default is subsequently set on the machine (`stellar network use mainnet`), unflagged executions immediately resolve to `mainnet`. Explicitly pass `--network` in scripts and agent invocations to guarantee deterministic targeting.
 
-Every run is a one-shot argv parse. There is no REPL and no persistent session. The closest thing to
-interactivity is `stellar tx edit`, which opens a single transaction envelope in `$EDITOR`.
+## Invocation Model
 
-This suits an agent well. Each command is independent, idempotent to plan, and carries its full
-context in its arguments, so there is no session state for the agent to lose track of.
+Every command invocation parses `argv` as a stateless, single-shot execution. The CLI maintains no REPL or background daemon.
 
-## Read path
+To edit transaction envelopes interactively, run `stellar tx edit` to load the target payload into `$EDITOR`.
 
-Reads are simulations. The CLI sends the call to RPC, the network evaluates it without committing
-anything, and the result comes back. No source account, no signature, no fee, and no funded account
-are required.
+Because each command is self-contained, stateless, and carries complete context in its arguments, the CLI is naturally suited for agent orchestration.
+
+## Read Path
+
+Reads execute as network simulations. The CLI sends the request to the RPC endpoint, where the network evaluates state without committing a transaction.
+
+Requirements: None (no keypair, funded account, signature, or fee required).
 
 ```bash
 stellar token decimals --id <CODE:ISSUER> --network mainnet
+
 ```
 
-Reads need no key, no funded account, and no signing, which makes them the cheapest way to check
-your setup, on testnet, from a fresh install with no keys configured. Mainnet needs one extra step
-first: the built-in `mainnet` network entry is a placeholder, not a real RPC endpoint, so a fresh
-install cannot reach mainnet until you add a real one:
+### Mainnet Read Configuration
+
+The pre-installed `mainnet` entry is a placeholder URL. Configure a functional mainnet RPC endpoint before executing reads against mainnet:
 
 ```bash
 stellar network add mainnet --rpc-url <YOUR_MAINNET_RPC_URL> \
   --network-passphrase "Public Global Stellar Network ; September 2015"
+
 ```
 
-Stellar's [RPC providers page](https://developers.stellar.org/docs/data/apis/rpc/providers) has the full list, and the public
-`https://mainnet.sorobanrpc.com` needs no signup.
+Refer to the [RPC providers directory](https://developers.stellar.org/docs/data/apis/rpc/providers) for endpoints. The public endpoint `https://mainnet.sorobanrpc.com` requires no API key.
 
-See [Supported networks](supported-networks.md) for why. Reads are the right smoke test when
-something is misconfigured, and an agent can safely identify an unknown asset before it holds any,
-on any network that actually has an RPC endpoint configured.
+## Write Path
 
-## Write path
+State-modifying commands execute in five sequential stages:
 
-A mutating command runs five stages: simulate, sign any Soroban authorization entries, sign the
-transaction envelope, submit, then poll for the result.
+1. **Simulate:** Send transaction payload to RPC to estimate footprint and fees.
+2. **Authorize:** Sign Soroban authorization entries (prompts for interactive approval unless `--auto-sign` is passed).
+3. **Sign:** Sign the complete transaction envelope with secret key.
+4. **Submit:** Broadcast payload to RPC endpoint.
+5. **Poll:** Query network until transaction reaches finality.
 
-Non-root Soroban authorization entries prompt for approval during the second stage. `--auto-sign`
-suppresses that prompt. Nothing else in the pipeline prompts.
+Starting in v28.0.0, onchain execution failures expose underlying diagnostic event strings (e.g., `"trustline entry is missing for account"`) alongside contract host error codes (e.g., `Error(Contract, #13)`).
 
-Since 28.0.0, an on-chain failure surfaces the diagnostic events rather than only the host error
-code, so a failure reads as `"trustline entry is missing for account"` instead of only
-`Error(Contract, #13)`. That difference matters when an agent has to decide what to do next.
+## Composition & Piping
 
-## Composition
+Three architectural features enable unix-style transaction piping:
 
-Three properties make the CLI pipeable, and together they are its most distinctive feature.
-
-`--build-only` on most mutating commands stops before signing and submitting, and prints unsigned
-base64 XDR to stdout. It still needs RPC: it reads the source account's sequence number from the
-network, so it needs a reachable network and a funded source account. What it does not do is sign
-or submit. The `stellar token` family is the exception: `token transfer` and `token approve` have
-no `--build-only` flag at all. Use `stellar tx new payment --build-only` in their place when a
-build-only handoff is what you need for moving value.
-
-Every `tx` subcommand reads XDR from stdin when given no positional argument. `stellar tx sign` and
-`stellar tx hash` need no RPC connection at all, and they are the only genuinely offline stages in
-this pipeline.
+1. **`--build-only`:** Generates unsigned, base64-encoded XDR to `stdout` without signing or submitting. Requires RPC connectivity and a funded account to query the current sequence number. (*Note:* `stellar token transfer` and `stellar token approve` lack `--build-only`; use `stellar tx new payment --build-only` instead).
+2. **`stdin` Parsing:** All `stellar tx` subcommands accept XDR from standard input when positional arguments are omitted.
+3. **Offline Signing:** `stellar tx sign` and `stellar tx hash` operate entirely offline without network or RPC access.
 
 ```bash
 stellar tx new payment --source agent-1 --destination <ADDRESS> --amount 10000000 --build-only --network testnet \
   | stellar tx sign --sign-with-key agent-1 --network testnet \
   | stellar tx send --network testnet
+
 ```
 
-Pass `--network` at the sign stage explicitly. A transaction's signature commits to the network
-passphrase, so signing without it falls back to whatever network happens to be your saved default.
-That produces a valid-looking envelope that fails on submission with `TxBadAuth` if the default was
-the wrong network.
+Always pass `--network` directly to `stellar tx sign`. Transaction signatures commit to the target network passphrase; omitting this parameter causes the sign command to fall back to global defaults, resulting in `TxBadAuth` errors at submission.
 
-Splitting that pipeline across machines gives you air-gapped signing, but only the middle stage is
-actually air-gapped: build on a networked machine, sign on an offline one, submit from a networked
-machine again. The signing key never touches a networked machine, which is the real security
-property here, not the whole pipeline being network-free. Splitting the pipeline across people
-instead gives you a review step.
+This composition allows execution across air-gapped environments (Build online → Sign offline → Submit online) or human review workflows.
 
-## Token resolution
+## Token Resolution
 
-`--id` on every `stellar token` command accepts four forms, resolved by one shared resolver:
+The `--id` flag across `stellar token` commands uses a single resolver that accepts four identifier formats:
 
-- `native` for XLM
-- `CODE:ISSUER` for a classic asset
-- a `C…` contract address
-- a saved contract alias
+* `native` (Native XLM)
+* `CODE:ISSUER` (Classic Stellar Asset)
+* `C...` (Soroban Contract Address)
+* Saved contract alias
 
-The first two resolve to a Stellar Asset Contract, so you never look up a contract ID by hand. If the
-Stellar Asset Contract for a classic asset has not been deployed, the CLI reports
-`sac_not_deployed` and names `stellar contract asset deploy` as the fix.
+Classic assets (`CODE:ISSUER`) automatically resolve to their corresponding Stellar Asset Contract (SAC). If the SAC is not yet deployed onchain, the CLI returns `sac_not_deployed` and prompts deployment via `stellar contract asset deploy`.
 
-## Contract interface generation
+## Dynamic Contract Interface Generation
 
-`stellar contract invoke --id <CONTRACT> -- --help` reads the contract's own schema from the network
-and generates a typed CLI for it on the fly. Everything after `--` is parsed by that generated CLI,
-including per-argument help.
+Passing `-- --help` to a contract invocation fetches the target contract's onchain metadata schema and dynamically generates typed CLI documentation:
 
 ```bash
 stellar contract invoke --id <CONTRACT> --source agent-1 --network testnet -- --help
 stellar contract invoke --id <CONTRACT> --source agent-1 --network testnet -- <FUNCTION> --help
+
 ```
 
-An agent can therefore discover a contract's callable surface without an ABI file, a binding
-package, or any prior knowledge of the contract.
+Arguments passed after `--` are validated by the generated interface, allowing agents to inspect and invoke arbitrary contract ABIs dynamically without local binding files.
 
-## Agent integration
+## Agent Integration Tools
 
-The CLI ships no agent glue. Three separate pieces cover that ground, and none of them is required.
+* **Raven MCP Server:** Hosted Model Context Protocol endpoint (`[https://raven.stellar.buzz/mcp](https://raven.stellar.buzz/mcp)`). Provides documentation search, network graph data, and ecosystem queries across `stellarDocs`, `scout`, and `lumenloop` namespaces. Read-only research endpoint requiring OAuth browser authentication; cannot sign or submit transactions.
+* **`stellar skill`:** Outputs built-in CLI usage documentation directly from the compiled binary. See [Skills](../skills.md).
+* **`AGENTS.md`:** Standard workspace template emitted by `stellar contract init` (v28.0.0+) providing build and test directives for contract development agents.
 
-**Raven** is Stellar's hosted MCP server at `https://raven.stellar.buzz/mcp`. It exposes
-documentation search, an ecosystem graph, and community content, under the `stellarDocs`, `scout`,
-and `lumenloop` namespaces. It is a research server. It holds no keys and cannot sign or submit
-anything. Every connection path ends in a browser sign-in.
+## Related Pages
 
-**Stellar Skills** are installable skill packages covering Soroban contracts and agent payments.
-They are documentation delivered as a skill rather than a driver for the CLI. The
-[Stellar CLI skill package](../skills.md) that ships with these docs is the driver: workflows and
-command references written to constrain an agent operating the binary.
-
-**`AGENTS.md`** is generated by `stellar contract init` as of 28.0.0. It gives a coding agent the
-build and test commands for the scaffolded workspace. It is aimed at agents writing contracts, not
-at agents moving funds.
-
-The [Stellar CLI skill package](../skills.md) is that instruction layer, written against this
-documentation set. It pins itself to a build with `cliVersion` in its frontmatter, though nothing
-verifies that pin for you: `stellar doctor` reports the binary, not what a skill expects of it, so
-an agent has to probe a subcommand to tell a main build from a release build.
-
-## Related pages
-
-- [Authority model](authority-model.md)
-- [Output and errors](output-and-errors.md)
-- [Commands reference](commands.md)
-- [Build and submit transactions](../guides/build-and-submit-transactions.md)
+* [Authority model](authority-model.md)
+* [Output and errors](output-and-errors.md)
+* [Build and submit transactions](../guides/build-and-submit-transactions.md)

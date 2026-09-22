@@ -5,17 +5,9 @@ keywords: [Stellar, agent, message signing, SEP-53, verify]
 
 # Sign messages
 
-Prove control of a key by signing a piece of text, and let someone else check that proof.
-
-No money moves and nothing reaches the network, so this works on a machine that has never been
-online and on an account that has never been funded. It is how an agent answers "prove this address
-is yours" without spending anything.
-
-`stellar message sign` and `stellar message verify` implement SEP-53. Both run fully offline.
-Neither needs an RPC connection, a funded account, or a network flag.
-
-**Skill:** `references/signing.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+Prove control of a key by signing a piece of text, and let someone else verify it.
+`stellar message sign` and `verify` implement SEP-53 and run fully offline, with no funded account
+or network flag.
 
 ## Ask your agent
 

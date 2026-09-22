@@ -5,22 +5,8 @@ keywords: [Stellar, agent, build-only, tx, sign, simulate, XDR]
 
 # Build and submit transactions
 
-Split one payment into three steps: build it, sign it, send it.
-
-That buys two things. A person can read the transaction and approve it before anything is signed,
-and the signing key can live on a machine that never touches the network. An agent can prepare work
-it is not allowed to finish.
-
-Every `tx new <OPERATION>` and every `contract` command accepts `--build-only`, which stops before
-signing and submitting. It still contacts RPC to read the source account's sequence number, so
-building needs network access and a funded source account. Signing and submitting are the two steps
-it actually skips. `token transfer` and `token approve` do not accept `--build-only` at all; for a
-build-only payment handoff, use `stellar tx new payment --build-only` instead of `token transfer`.
-Every `stellar tx` subcommand reads XDR from stdin when you do not pass it as an argument, so build,
-sign, and send compose into a pipeline.
-
-**Skill:** `workflows/air-gapped-signing.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+Build a payment, sign it, and send it as three separate steps, so a person or an offline machine
+can approve it before anything is signed.
 
 ## Ask your agent
 
@@ -61,6 +47,14 @@ Build a payment from agent-1 to <ADDRESS> for 10 XLM without submitting it, then
      | stellar tx sign --sign-with-key <SOURCE> --network <NETWORK> \
      | stellar tx send --network <NETWORK>
    ```
+
+## What `--build-only` skips
+
+Every `tx new <OPERATION>` and every `contract` command accepts `--build-only`, which stops before
+signing and submitting. Building still reads the source account's sequence number over RPC, so it
+needs network access and a funded source account. `token transfer` and `token approve` do not
+accept `--build-only`, so use `tx new payment --build-only` for a payment handoff. Every
+`stellar tx` subcommand reads XDR from stdin, so build, sign, and send compose into a pipeline.
 
 ## Parsing the result
 
@@ -170,8 +164,7 @@ running `simulate` yourself before `send`.
 
 `stellar tx new <OPERATION>` covers 22 operations, from `payment` and `create-account` to DEX and
 sponsorship operations. Each shares this same build, sign, send composition and adds its own flags on
-top. See the [commands reference](../reference/commands.md) for the full operation list rather than
-memorizing it here.
+top. Run `stellar tx new --help` for the full operation list.
 
 ## Common pitfalls
 
@@ -193,8 +186,8 @@ stellar tx update sequence-number next --network <NETWORK> < unsigned.xdr > fixe
 stellar tx sign --sign-with-key <IDENTITY> --network <NETWORK> < fixed.xdr | stellar tx send --network <NETWORK>
 ```
 
-If the only copy you have is already signed, rebuild from step 1 instead. Measured on testnet across
-both builds, three steps each: patch-then-sign on an unsigned envelope succeeds, rebuild-then-sign
+If the only copy you have is already signed, rebuild from step 1 instead. Measured on testnet,
+three steps each: patch-then-sign on an unsigned envelope succeeds, rebuild-then-sign
 succeeds, and patch-then-re-sign on a signed envelope fails `TxBadAuthExtra` every time.
 
 Elapsed time alone is not the cause: only another transaction from the same source account advances

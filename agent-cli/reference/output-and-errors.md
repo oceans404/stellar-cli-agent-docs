@@ -5,19 +5,14 @@ keywords: [Stellar, agent, CLI, output, errors, JSON, exit codes, stellar token]
 
 # Output and errors
 
-`--output` is declared per command, not globally. Each command picks its own value set, and the
-default differs by command. There is no single `--output json` flag that works everywhere. The
-`stellar token` family is the only part of the CLI with a typed, machine-parseable error envelope.
-Every other command reports failure as unstructured text on stderr plus a non-zero exit code. Read
-this page before you wire an agent to parse CLI output, because the coverage is not uniform and
-guessing wrong costs a debugging session.
+:::note
+A global `--output json` flag that works on every command is coming soon. Until then, `--output` is
+declared per command, and each command has its own values and default.
+:::
 
-**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
-in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
-most machines. See [Quickstart step 1](../quickstart.md).
-
-**Skill:** `references/errors.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+The `stellar token` family returns a typed, machine-parseable error envelope. Other commands report
+failure as text on stderr plus a non-zero exit code. Check the table below before you wire an agent
+to parse CLI output.
 
 ## Commands that support `--output`
 
@@ -38,14 +33,14 @@ and keep `json-formatted` for output a person reads.
 | `fees stats`, `fee-stats` (deprecated) | `text`, `json`, `json-formatted` | `text` |
 | `contract info interface` | `rust`, `xdr-base64`, `json`, `json-formatted` (no `text`) | `rust` |
 | `contract info meta`, `contract info env-meta` | `text`, `xdr-base64`, `json`, `json-formatted` (no `rust`) | `text` |
-| `contract read` | `string`, `json`, `xdr` (`json` advertised but broken, see below) | `string` |
+| `contract read` | `string`, `json`, `xdr` (use `xdr` to parse, see below) | `string` |
 | `contract inspect` (deprecated) | `xdr-base64`, `xdr-base64-array`, `docs` | `docs` |
 | `xdr decode` | `json`, `json-formatted`, `text`, `rust-debug`, `rust-debug-formatted` | `text` |
 | `xdr encode` | `single`, `single-base64`, `stream` | `single-base64` |
 | `events` | `pretty`, `plain`, `json`, `raw` | `pretty` |
 | `snapshot create` | `json` only | `json` |
 
-Three things worth knowing beyond the table:
+Beyond the table:
 
 - `strkey decode` and `strkey encode` have no `--output` flag, and they are not symmetric.
   `strkey decode` emits JSON: a decoded `G...` address comes back as
@@ -54,38 +49,24 @@ Three things worth knowing beyond the table:
 - **`tx send` has no `--output` flag.** Passing one exits `2`. It always writes the indented
   multi-line shape, around 11 KB for a one-operation payment, so the compact `json` this page tells
   you to prefer is not available on the one command that returns a submission receipt. Parse the
-  indented form, or take the hash from `token transfer` or the stderr signing line instead. See
-  [Commands](commands.md) for the keys it returns.
+  indented form, or take the hash from `token transfer` or the stderr signing line instead.
 - `tx fetch fee` defaults to `table`, not `json`, unlike every other `tx fetch` subcommand. Pass
   `--output json` explicitly if your agent needs to parse it.
-- **`json-formatted` is not JSON on any `tx fetch` subcommand.** All four prepend a human header to
-  stdout, `Transaction Status: SUCCESS` and `Transaction Ledger: <N>`, with ANSI color codes around
-  the status. `jq` fails on it while `--output json` parses cleanly, confirmed live on `result`,
-  `meta`, `fee`, and `events`. Elsewhere, on the `token` family and `ledger`, `json-formatted` is
-  ordinary indented JSON and parses. Use `json` whenever you intend to parse, and treat a parse
-  failure here as a formatting choice, never as a failed transaction.
+- **On `tx fetch`, use `--output json` to parse.** `json-formatted` on `result`, `meta`, `fee`, and
+  `events` adds a human-readable header (`Transaction Status` and `Transaction Ledger`) above the
+  JSON, so a JSON parser will not accept it. On the `token` family and `ledger`, `json-formatted`
+  is plain indented JSON.
 - None of the 22 `stellar tx new <operation>` commands has an `--output` flag at all, and a
   successful submission writes nothing to stdout. See
   [`tx new` has no machine-readable receipt](#tx-new-has-no-machine-readable-receipt) below.
-- `contract read --output json` advertises JSON but does not emit it. See
-  [`contract read --output json` is broken](#contract-read---output-json-is-broken) below.
+- To parse `contract read` output, use `--output xdr`. See
+  [Parsing `contract read`](#parsing-contract-read) below.
 
-## `contract read --output json` is broken
+## Parsing `contract read`
 
-`--help` lists `string`, `json`, and `xdr` as the possible values for `contract read`'s `--output`.
-`json` does not produce JSON. It produces CSV with a JSON-looking value embedded in a doubled-quote
-field, and it fails to parse as JSON:
-
-```console
-$ stellar contract read --id increment --network testnet --output json | head -1
-"""ledger_key_contract_instance""","{
-
-$ stellar contract read --id increment --network testnet --output json | python3 -c 'import sys,json;json.load(sys.stdin)'
-json.decoder.JSONDecodeError
-```
-
-Do not pipe `contract read --output json` straight into a JSON parser. Either parse it as CSV, or
-use `--output xdr` and decode the result yourself with `stellar xdr decode`.
+`contract read --output json` currently writes CSV rows with a JSON value in one field, not a single
+JSON document. For a machine-readable result, use `--output xdr` and decode it with
+`stellar xdr decode`, or parse the output as CSV.
 
 ## `tx new` has no machine-readable receipt
 
@@ -140,7 +121,7 @@ Known `type` values, from the `token` command source:
 | `sac_not_deployed` | The Stellar Asset Contract for this classic asset has not been deployed yet. The error carries a hint pointing at `stellar contract asset deploy --asset <ASSET> --source-account <IDENTITY>`. `--source-account` is required on that command; the hint does not run without it. |
 | `contract_not_found` | Defined in the `token` command source, but not reached through the `token` commands in testing. A nonexistent contract address returned `config` instead (see above). Do not rely on this type to detect a missing contract. |
 | `config` | A resolution or configuration problem: an unparseable `--id`, an unknown alias, or a well-formed but nonexistent `C…` contract address. This, not `contract_not_found`, is the type you actually get for a missing contract, with `message: "contract not found: <ID>"`. |
-| `network` | Documented, but never observed. Twelve network-level failures across both builds all returned `invoke` instead. Do not key retry logic on this value. |
+| `network` | Reserved for network-level failures. In testing, those returned `invoke`, so do not key retry logic on this value. |
 | `invalid_address` | A `--from`, `--to`, `--spender`, or `--account` value is not a valid address. `--account` is the one that matters for reads: an unknown alias returns `Account alias "<NAME>" not Found`. |
 | `invoke` | The contract call itself failed during simulation or submission. Check the `message` field's embedded diagnostic event log for the actual cause. Two you will meet often: `Error(Contract, #13)`, `"trustline entry is missing for account"`, for a classic asset with no trustline or no account at all; and `Error(Contract, #6)`, `"account entry is missing"`, for the native asset with no account at all. Both are `invoke`, so you cannot branch on `type` alone to tell them apart. |
 | `internal` | An unexpected CLI-internal error. |
@@ -209,9 +190,9 @@ the entire result. Confirmed live on both the failed-pull and failed-toolchain p
 | `1` | Runtime failure. The invocation was well formed and something about the world caused it: an RPC error, a missing account, a failed simulation, a rejected submission | Inspect, and retry only where the retry rules allow it |
 | `2` | Malformed invocation. An unrecognized subcommand, an unknown flag, an invalid value for a flag | Stop and escalate. Retrying the same command verbatim cannot succeed |
 
-Measured across 104 error cases on both builds. The runtime direction held without exception: every
-runtime failure exited `1`. The malformed direction held in 24 of 26 cases per build, and there is
-one known counterexample.
+Measured across 104 error cases. The runtime direction held without exception: every runtime
+failure exited `1`. The malformed direction held in 24 of 26 cases, and there is one known
+counterexample.
 
 **`xdr decode --type <invalid>` and `xdr encode --type <invalid>` exit `1`, not `2`, and print the
 `❌` prefix.** That single case defeats both discriminators at once. Every other invalid-flag-value
@@ -310,10 +291,9 @@ $ … | stellar tx send --network testnet 2>&1
 {"status":"SUCCESS", …}
 ```
 
-The second form fails to parse. This is not a cosmetic bug: an agent that treats a parse failure as
-a submit failure and retries has just resubmitted a transaction that already succeeded. That is a
-confirmed double-spend, not a hypothetical one. A failed parse is not evidence the transaction
-failed.
+The second form does not parse as JSON. An agent that treats that as a submit failure and retries
+resubmits a transaction that already succeeded, which spends twice. A failed parse is not evidence
+the transaction failed.
 
 One exception to the recovery route, and it is the mode most agents run in: `token transfer
 --output json` writes **nothing at all to stderr**, on success and on failure alike, measured on
@@ -322,7 +302,7 @@ stdout's `tx_hash`. If that stdout is empty or unparseable, you have no local re
 Do not retry. Re-read both balances, and go to Horizon if you need the hash itself.
 
 Redirect stderr separately, never merged, whenever you intend to parse stdout. Capture it to a file
-rather than discarding it, because for `tx send` the hash you need to confirm on-chain state lives
+rather than discarding it, because for `tx send` the hash you need to confirm onchain state lives
 on that stderr line:
 
 ```bash
@@ -335,7 +315,7 @@ Before retrying any submit that appears to have failed, confirm it did not alrea
 stellar tx fetch result --hash <HASH> --network <NET>
 ```
 
-Only retry once you have confirmed the transaction is not already on-chain.
+Only retry once you have confirmed the transaction is not already onchain.
 
 In text mode, a submitted transfer prints the bare transaction hash as the last line of stdout:
 
@@ -389,5 +369,5 @@ were looking for are still on the other network, and you have made a decoy.
 ## Related pages
 
 - [Quickstart](../quickstart.md)
-- [Troubleshooting](../troubleshooting.md)
+- [Troubleshooting](troubleshooting.md)
 - [Authority model](authority-model.md)

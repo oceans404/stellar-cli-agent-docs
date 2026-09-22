@@ -9,6 +9,11 @@
       "source": "/cli-setup",
       "destination": "/quickstart",
       "permanent": true
+    },
+    {
+      "source": "/troubleshooting",
+      "destination": "/reference/troubleshooting",
+      "permanent": true
     }
   ]
 }

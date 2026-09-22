@@ -5,15 +5,24 @@ keywords: [Stellar, agent, allowance, approve, delegated spending, authority, mu
 
 # Delegate spending
 
-Give an agent the ability to spend some of your money, deciding in advance how much it can take
-and whether it needs you present to take it.
+Let an agent spend some of your money, with a cap and a deadline the network enforces, without ever
+holding your key.
 
-**Build note:** `token name`, `symbol`, `decimals`, `approve`, and `allowance` are merged but not
-in the 28.0.0 release, so they need a build from `main`. Bare `stellar` resolves to the release on
-most machines. See [Quickstart step 1](../quickstart.md).
+## Ask your agent
 
-Two questions settle which setup you want, and neither is "which feature should I use". Can the
-agent act without you, and what is the worst case if it goes wrong.
+```text
+Grant agent-1 an allowance of 25 USDC from treasury on testnet USDC, expiring in about a day, then
+show me the allowance.
+```
+
+That prompt is [Pattern 2](#pattern-2-an-allowance). `treasury` is the funded account you control,
+and `agent-1` is your agent's own key from the [Quickstart](../quickstart.md). The examples use
+testnet USDC, `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`, which has 7
+decimals, so 25 USDC is `250000000`.
+
+## Choose a pattern
+
+Pick by two questions: can the agent act without you, and what is the worst case.
 
 | What you want | Do this | Worst case | Human in the loop |
 |---|---|---|---|
@@ -23,48 +32,14 @@ agent act without you, and what is the worst case if it goes wrong.
 | You approve each move, agent holds nothing | [A zero-XLM agent](#pattern-3-an-agent-with-no-xlm) | Nothing moves without you | Every transaction |
 | Fund it for a limited time | [A self-expiring grant](#pattern-4-a-self-expiring-grant) | What you granted | Once |
 
-Start with the first row. A dedicated account, funded with an amount you would be annoyed but not
-hurt to lose, is one command, needs nothing from this page, and caps your worst case at that
-balance:
+Start with the first row if the stakes are small. `stellar keys generate agent-1 --network testnet
+--fund` is the whole setup.
 
-```bash
-stellar keys generate agent-1 --network testnet --fund
-```
-
-The rest of this page is for when the money outgrows that.
-
-Be clear about what the other rows actually are. **Only the allowance delegates.** It is the one
-pattern where the agent moves your money on its own, inside a bound the network enforces while you
-are asleep.
-
-A co-signed vault and a zero-XLM agent are approval workflows, not delegation. They differ only in
-which thing you sign: the vault makes you co-sign the envelope, the fee bump makes you pay for it.
-Both reduce the agent to a proposer, and both interrupt you every single time. That is a real
-control and often the right one, but it is not autonomy, and a vault does not hold your money
-hostage either: your key alone still moves everything in it.
-
-A self-expiring grant is funding. The deadline bounds how long the offer stands, not what happens
-afterward. Once claimed, the money is the agent's outright.
-
-None of them gives a rolling window, a destination allow-list, or a spend rule per time period.
-[What this does not give you](#what-this-does-not-give-you) is honest about that.
-
-`stellar token approve` grants an address a capped, expiring allowance to move a token out of your
-account. `stellar token allowance` reads what is currently granted. Together they are the closest
-thing the Stellar CLI has to a per-token spend limit, and the network enforces the cap, not the
-agent's good behavior.
-
-This page's examples use testnet USDC, `USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`,
-which is 7 decimals. 25 USDC is `250000000`.
-
-Two identities appear below. `treasury` is the funded account that holds the USDC and is where the
-money comes from. It is the account you keep control of, and your agent cannot sign for it.
-`agent-1` is your agent's own key, created in the [Quickstart](../quickstart.md), and it holds
-nothing. The point of this page is to let `agent-1` spend a capped amount out of `treasury` without
-ever holding `treasury`'s key.
-
-**Skill:** `workflows/delegate-spending.md` and `workflows/audit-and-revoke-allowances.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+Only the allowance delegates: the agent moves your money on its own, inside a cap the network
+enforces. The co-signed vault and the zero-XLM agent are approval workflows, where the agent
+proposes and you sign every transaction. A self-expiring grant is funding, and once claimed the
+money is the agent's outright. None of them gives a rolling window, a destination allow-list, or a
+per-period spend rule. See [What this does not give you](#what-this-does-not-give-you).
 
 ## Pattern 1: A co-signed vault
 
@@ -176,13 +151,6 @@ This bounds who agrees, not how much. A co-signed payment for the vault's entire
 valid payment, so pair it with an allowance when you need both.
 
 ## Pattern 2: An allowance
-
-### Ask your agent
-
-```text
-Grant agent-1 an allowance of 25 USDC from treasury on testnet USDC, expiring in about a day, then
-show me the allowance.
-```
 
 ### Steps
 
@@ -440,11 +408,10 @@ stellar tx new payment --source <AGENT> --destination <DESTINATION> --asset <COD
 ```
 
 `--asset` is not optional here even though the CLI defaults it. The default is `native`, and a
-native payment from this agent cannot succeed by construction: it holds no XLM. That attempt is
-worse than a no-op. The transaction-level check passes, your fee bump is charged, and the inner
-transaction fails with `Payment(Underfunded)` inside a `TxFeeBumpInnerFailed` dump that reads as
-though the fee bump itself were broken, sending you to debug the Python and the sponsorship, both
-of which are fine. A zero-XLM agent spends assets, never XLM.
+native payment from this agent cannot succeed: it holds no XLM. Your fee bump is still charged,
+and the inner transaction fails with `Payment(Underfunded)` inside a `TxFeeBumpInnerFailed` dump.
+The fee bump and sponsorship are working; the fix is the `--asset` flag. A zero-XLM agent spends
+assets, never XLM.
 
 There is no fee-bump command, so wrap that signed envelope through `tx decode` and `tx encode`.
 Set the treasury address in a shell variable first: a `<PLACEHOLDER>` written directly after
@@ -597,7 +564,7 @@ either: `keys add --public-key <M_ADDRESS>` saves it, and `keys address` reads b
 feature today. The CLI can deploy a custom-account contract and send funds to it, but it cannot
 sign that contract's authorization entry: `contract invoke` stops with
 `Missing signing key for account C…`, and the `tx sign` path leaves the entry unsigned so the
-transaction fails on-chain inside `__check_auth`. Measured on testnet against a deployed v1 smart
+transaction fails onchain inside `__check_auth`. Measured on testnet against a deployed v1 smart
 wallet holding real balance. Do not move funds into a contract account from the CLI expecting to
 move them out the same way.
 

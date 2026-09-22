@@ -8,8 +8,8 @@
 ## Setup
 
 - [Overview](agent-cli/index.md): Why an agent needs its own wallet, what your agent can do, what the CLI does not bound for you, and where to start.
-- [Quickstart](agent-cli/quickstart.md): Install the CLI, connect your agent to the Raven MCP server, create and store a key, set defaults for a terminal or CI, and make a first transfer.
-- [Skills](agent-cli/skills.md): The skill package that drives the CLI, one reference per command family and one workflow per task, with the docs page each maps to. Also how it relates to `stellar skill`, the 128-line conventions guide a main build prints from the binary.
+- [Quickstart](agent-cli/quickstart.md): Install the CLI, have your agent load `stellar skill`, create and store a key, set defaults for a terminal or CI, and make a first transfer.
+- [Skills](agent-cli/skills.md): What the built-in `stellar skill` guide covers and leaves out, plus the optional stellar-dev-skill for broader Stellar development.
 
 ## Guides
 
@@ -19,16 +19,14 @@
 - [Sign messages](agent-cli/guides/sign-messages.md): Prove control of a key offline with SEP-53 `stellar message sign` and `verify`.
 - [Build and submit transactions](agent-cli/guides/build-and-submit-transactions.md): Compose `--build-only`, `tx sign`, and `tx send` into a pipeline, including air-gapped signing.
 - [Pay for APIs with x402](agent-cli/guides/pay-for-apis-x402.md): Pay x402-protected APIs with USDC through `@x402/stellar`, using the CLI only for the identity and the SEP-41 settlement rail.
-- [USDT0 on mainnet](agent-cli/guides/usdt0-on-mainnet.md): Addresses, trustlines, the clawback flags, and the thin on-DEX liquidity to know about before moving size.
+- [USDT0 on mainnet](agent-cli/guides/usdt0-on-mainnet.md): Addresses, trustlines, the clawback flags, and how to acquire it safely.
 
 ## Reference
 
 - [Architecture](agent-cli/reference/architecture.md): Local state, configuration precedence, read and write paths, composition, token resolution, and how agents connect.
-- [Authority model](agent-cli/reference/authority-model.md): What bounds an agent's spending today, what the CLI does not protect you from, and the on-chain policy options and their maturity.
-- [Commands reference](agent-cli/reference/commands.md): Every command and flag, marked read-only or state-mutating.
+- [Authority model](agent-cli/reference/authority-model.md): What bounds an agent's spending today, what the CLI does not protect you from, and the onchain policy options and their maturity.
 - [Output and errors](agent-cli/reference/output-and-errors.md): Which commands support `--output json`, the typed error envelope on the `token` family, and exit-code conventions.
-- [Supported networks](agent-cli/reference/supported-networks.md): mainnet, testnet, futurenet, and local, with passphrases and funding methods.
 
 ## Help
 
-- [Troubleshooting](agent-cli/troubleshooting.md): `stellar doctor` first, then symptom, cause, and fix for the common failures.
+- [Troubleshooting](agent-cli/reference/troubleshooting.md): `stellar doctor` first, then symptom, cause, and fix for the common failures.

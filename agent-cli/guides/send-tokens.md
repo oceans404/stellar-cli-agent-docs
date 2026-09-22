@@ -5,18 +5,7 @@ keywords: [Stellar, agent, token transfer, payments, CLI]
 
 # Send tokens
 
-Send someone tokens and confirm the money arrived. On testnet this takes about a minute.
-
-Moving the tokens is one command. The work is getting the amount right, because the CLI counts in
-the token's smallest unit rather than the number a person would say out loud, and making sure the
-destination is able to hold the asset at all.
-
-`stellar token transfer` moves the native asset or any classic asset to a recipient in one command.
-`--amount` is always the token's smallest unit, not a human-readable number; see Amounts are
-smallest units below before you convert one.
-
-**Skill:** `workflows/send-tokens.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
-of this page.
+Send someone tokens and confirm the money arrived. 
 
 ## Ask your agent
 

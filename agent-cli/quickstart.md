@@ -5,83 +5,55 @@ keywords: [Stellar, agent, quickstart, CLI, testnet, stellar token, CI, secure s
 
 # Quickstart
 
-**Skill:** `workflows/onboarding.md` and `references/keys.md` in the
-[Stellar CLI skill package](skills.md) are the agent-facing version of this page.
-
 ## Before you start
 
-You need a terminal on macOS, Linux, WSL, or Windows, and an AI agent that supports MCP servers or
-skills (Claude Code, Codex, Cursor, VS Code, or similar). The CLI is a single static binary and
-needs no runtime. Contract development additionally needs Rust and the `wasm32v1-none` target, but
-nothing on this page does.
+You need a terminal on macOS, Linux, WSL, or Windows, and an AI agent that can run shell commands
+(Claude Code, Codex, Cursor, or similar). Contract development also needs the `wasm32v1-none`
+target, but nothing on this page does.
 
-Do this on testnet. Every command below targets testnet, and testnet funds are free from friendbot.
-Move to mainnet after you have watched your agent work.
+Every command below targets testnet, where friendbot funds accounts for free. Move to mainnet after
+you have watched your agent work.
 
 ## Step 1: Install the CLI
 
-Build from `main`. Five of the seven `stellar token` subcommands these docs use (`name`, `symbol`,
-`decimals`, `approve`, and `allowance`) are merged but not in the 28.0.0 release, so a release
-install cannot run them. There is no prebuilt main binary: GitHub publishes only tagged releases,
-crates.io has no prereleases, and `install.sh` resolves the latest release with no way to ask for a
-branch.
+:::note
+These docs are a developer preview. Five of the seven `stellar token` subcommands they use (`name`,
+`symbol`, `decimals`, `approve`, and `allowance`) are merged to `main` but not yet in a release, so
+you build the CLI from GitHub `main` instead of installing a release. Once they ship, use a
+[release install](#release-installs).
+:::
 
-Before you run the install, have all four of these:
-
-| Prerequisite | Check with | Needs to be |
-|---|---|---|
-| Rust toolchain | `rustc --version` | 1.93.0 or later |
-| Cargo | `cargo --version` | ships with Rust |
-| Git | `git --version` | any recent version |
-| Build time | | roughly 5 to 15 minutes from cold |
-
-Rust 1.93.0 is a hard floor. The repository pins it in `rust-toolchain.toml`, but that pin only
-applies inside a checkout, so `cargo install` uses whatever your default toolchain is. Check it
-yourself rather than assuming the pin protects you. Install or update with
-`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`, then `rustup update stable`.
+You need Rust 1.93.0 or later (`rustc --version`), Cargo, and Git. A cold build takes 5 to 15
+minutes. The repository pins Rust in `rust-toolchain.toml`, but `cargo install` ignores that pin and
+uses your default toolchain, so check it yourself. Update with `rustup update stable`, or install
+Rust from [rustup.rs](https://rustup.rs).
 
 ```bash
 cargo install --locked --git https://github.com/stellar/stellar-cli --branch main stellar-cli \
   --root ~/.stellar-main
 ```
 
-`--branch main` is not optional. Without it, cargo can resolve the default branch from its cached
-git database in `~/.cargo/git/db/` instead of fetching, and install a much older commit while still
-exiting successfully. We hit exactly this: the command without `--branch main` installed 23.1.3 from
-September 2025 and reported success.
+Keep both flags. Without `--branch main`, cargo can resolve the default branch from its cached git
+database and install an old commit while still reporting success (we got 23.1.3 from September 2025
+this way). `--root ~/.stellar-main` keeps the build from colliding with a release install, since
+both binaries are named `stellar`.
 
-`--root ~/.stellar-main` keeps the build out of `~/.cargo/bin`, where it would be named `stellar`
-and shadow, or be shadowed by, your release install depending on PATH order.
-
-`--version` tells you which build you have. Both report `28.0.0`, but the commit hash is printed
-alongside it and the two differ:
-
-```bash
-~/.stellar-main/bin/stellar --version    # stellar 28.0.0 (<commit>...)  main
-stellar --version                        # stellar 28.0.0 (<commit>...)  release
-```
-
-If you do not know which hash is which, ask for a subcommand only the main build has:
+Confirm you have the main build:
 
 ```bash
 ~/.stellar-main/bin/stellar token decimals --help
 ```
 
-That prints help on a main build and `error: unrecognized subcommand 'decimals'` on the release,
-exit code 2.
+A main build prints help. A release prints `error: unrecognized subcommand 'decimals'` and exits 2.
+`--version` cannot tell them apart, because both report `28.0.0`.
 
-This matters more than it looks. Bare `stellar` resolves to whatever is on your PATH, which is the
-release install on most machines, and release behavior looks correct for everything except those
-five subcommands. The absence of an error is not evidence you ran the build you meant to.
-Call the main build by its full path in the steps that need it, and keep `stellar` pointing at the
-release for everything else.
+Bare `stellar` usually resolves to a release install, which handles everything except those five
+subcommands. Call the main build by its full path wherever these docs need it.
 
 ### Release installs
 
-Use these once the five subcommands ship, or now if you only need `token transfer`, `token balance`,
-and the `tx` family. Pin an explicit version in CI, because Homebrew and the install script both
-track latest, which makes a green build today a red build tomorrow. There is no official npm
-package.
+Pin an explicit version in CI. Homebrew and the install script track latest, so a green build today
+can be red tomorrow. There is no official npm package.
 
 | Method | Command |
 |---|---|
@@ -98,58 +70,35 @@ package.
 stellar doctor
 ```
 
-`stellar doctor` is the triage command for everything that follows. It reports your CLI version,
-Rust toolchain and `wasm32v1-none` target, wasm optimizer availability, whether your OS secure store
-and any Ledger device are usable, whether a container engine is present, your config and data
-directory paths, your XDR version, and the reachability and protocol version of every configured
-network. It does not check account funding, API keys, or contract health. Run it first whenever
-something later fails.
+`stellar doctor` reports your CLI version, Rust toolchain, secure store and Ledger availability,
+config paths, and the reachability of every configured network. It does not check account funding,
+API keys, or contract health. Run it first whenever something later fails.
 
-## Step 2: Connect your agent
+## Step 2: Tell your agent to load the Stellar skill
 
-Add the Raven MCP server so your agent can search Stellar's documentation and ecosystem while it
-works. Raven is a research server. It reads docs and ecosystem data and cannot sign or submit
-anything.
+Ask your agent to load the CLI's conventions:
 
-Claude Code:
-
-```bash
-claude mcp add --transport http stellar-raven "https://raven.stellar.buzz/mcp"
+```text
+Run `~/.stellar-main/bin/stellar skill` and follow its conventions for every stellar command in this session.
 ```
 
-Codex:
-
-```bash
-codex mcp add stellar-raven --url "https://raven.stellar.buzz/mcp"
-codex mcp login stellar-raven
-```
-
-VS Code:
-
-```bash
-code --add-mcp '{"name":"stellar-raven","type":"http","url":"https://raven.stellar.buzz/mcp"}'
-```
-
-Every path ends in a browser sign-in. Raven is not an anonymous endpoint.
-
-### Give the agent the CLI's conventions
-
-A main build has `stellar skill`, which prints a short Markdown guide to the CLI's own conventions.
-Feed it to your agent alongside the MCP server:
-
-```bash
-~/.stellar-main/bin/stellar skill > stellar-cli-skill.md
-```
-
-It covers `network use`, `keys use`, contract aliases, `--send=no` for reads, and the
-stdout-versus-stderr split. It does not cover the `stellar token` family, `tx new`, message signing,
-or anything about spend authority, so it is a starting point and not the whole briefing. The
-[Stellar CLI skill package](skills.md) covers the rest. It exits `2` on a release install.
+`stellar skill` prints a short Markdown guide covering `network use`, `keys use`, contract aliases,
+`--send=no` for reads, and the stdout-versus-stderr split. It does not cover the `stellar token`
+family, `tx new`, message signing, or spend authority. The guides in these docs cover those. It
+exits `2` on a release install, so point the agent at the main build.
 
 ## Step 3: Create a key for your agent
 
-Give the agent its own identity rather than sharing yours. This is the cheapest bound you can put on
-it, because the most an agent can lose is what its own account holds.
+Give the agent its own identity rather than sharing yours, so its transactions come from an account
+you fund separately and can see in isolation.
+
+:::warning
+Keys are stored locally on your device, and nothing stops your agent from reaching them. It runs
+as your user, so it can read `~/.config/stellar/identity/`, run `stellar keys secret` to print a
+secret key or seed phrase, or sign with any identity on the machine, including yours.
+`--secure-store` keeps the seed out of a plaintext file, but the agent can still use it through the
+CLI. Keep only what you are willing to lose in any identity on a machine your agent runs on.
+:::
 
 ```bash
 stellar keys generate agent-1 --network testnet --fund
@@ -192,20 +141,6 @@ There is no `stellar keys rename`. To rename an identity, move its file in
 `~/.config/stellar/identity/` and confirm with `stellar keys address` that the public key is
 unchanged.
 
-### Hardware and watch-only identities
-
-For a hardware-backed identity:
-
-```bash
-stellar keys add agent-1 --ledger
-```
-
-For a watch-only identity that can read but never sign:
-
-```bash
-stellar keys add treasury --public-key <ADDRESS>
-```
-
 ## Step 4: Choose how your agent holds funds
 
 Pick one. This is the decision that determines your exposure.
@@ -223,34 +158,23 @@ option protects you from.
 
 ## Step 5: Set your defaults
 
-This step is for you at the terminal, not for your agent. `stellar network use` and `stellar keys
-use` write the default machine-wide, not per project and not per shell, so every other repository on
-this machine picks it up.
+This step is for you, not your agent. These defaults are machine-wide, so every other repository on
+this machine picks them up.
 
 ```bash
 stellar network use testnet
 stellar keys use agent-1
-```
-
-Every command that takes `--network` or `--source` now falls back to these. Confirm what the CLI
-will use, with secret-bearing values concealed:
-
-```bash
 stellar env
 ```
 
-Pass `--reveal` to print secrets. The flag was added in 27.0.0, which is also the first release
-where concealment is dependable. See [Troubleshooting](troubleshooting.md) if you are on an older
-install.
+`stellar env` shows what the CLI will use, with secrets concealed (`--reveal` prints them, 27.0.0
+and later).
 
-An agent should skip this step and keep passing `--network` explicitly on every command, along
-with whichever source flag that command takes, because it cannot see what a previous session saved.
+Your agent should ignore saved defaults and pass `--network` and a source flag on every command,
+because it cannot see what an earlier session saved. The source flag varies: the `tx` family and
+`stellar keys` take `--source`, but `stellar token transfer` takes `--from` and rejects `--source`.
 
-Not every command takes `--source`. The `tx` family and `stellar keys` do. `stellar token transfer`
-names its source `--from` and rejects `--source`. Check `--help` before you script a command.
-
-In CI, prefer environment variables over saved defaults, because they are explicit in the job
-definition:
+In CI, set environment variables instead:
 
 ```bash
 export STELLAR_NETWORK=testnet
@@ -260,7 +184,7 @@ export STELLAR_NO_CACHE=true
 
 ## Step 6: Make your first transfer
 
-You need a destination. Create a second identity so you have a real address to send to:
+Create a second identity to send to:
 
 ```bash
 stellar keys generate agent-2 --network testnet --fund
@@ -273,38 +197,23 @@ Ask your agent:
 Send 1 XLM from agent-1 to agent-2 on testnet, then show me the new balance.
 ```
 
-The commands it should run, using the address `stellar keys address agent-2` printed:
+It should run:
 
 ```bash
 stellar token transfer --id native --from agent-1 --to <ADDRESS> --amount 10000000 --network testnet
 stellar token balance --id native --account agent-1 --network testnet --decimal
 ```
 
-`--amount` is in the token's smallest unit, so `10000000` is 1 XLM at 7 decimals. Never assume 7.
-Read it with `~/.stellar-main/bin/stellar token decimals --id <TOKEN>`. `token decimals` is one
-of the five subcommands that need the main build, so call it by its full path.
+`--amount` is in the token's smallest unit, so `10000000` is 1 XLM at 7 decimals. Other tokens
+differ, so read the value with `~/.stellar-main/bin/stellar token decimals --id <TOKEN>`.
 
-An `--amount` below the smallest unit is not rejected. `--amount 1` submits 0.0000001 XLM and exits
-0, so a missing multiplier looks like a success.
+Nothing checks the amount for you. `--amount 1` sends 0.0000001 XLM, and `--amount 0` moves nothing
+but still charges the fee. Both exit 0 and report `tx_success`. The balance check is what catches
+this: `agent-1` should fall by 1 XLM plus the fee.
 
-`--amount 0` is the sharper case: it exits 0, returns a transaction hash, lands as `tx_success`, and
-charges the full fee while moving nothing. Measured on a `main` build, the source account fell by exactly
-13745 stroops and no value changed hands. `tx new payment --amount 0` rejects the same input with
-`Payment(Malformed)` and exit 1, so the classic path has a guard the Soroban path does not.
-
-The balance line above is what catches that, so read it rather than just running it. After a 1 XLM
-transfer `agent-1` should fall by 1 XLM plus the fee. If it fell by a fraction of a stroop instead,
-the transfer went through with the wrong amount. `tx fetch result` will not tell you: it reports
-`tx_success` and the same fee for both, and carries no amount, source, or destination.
-
-`token transfer` routes through the Stellar Asset Contract and pays Soroban resource fees on top of
-the base fee, so it costs roughly a hundred times the classic equivalent and accepts no fee flag at
-all. On testnet a native transfer measured 13745 stroops against 100 for `tx new payment`. Treat
-that as an order of magnitude, not a constant: the figure depends on how many ledger entries the
-transfer touches, and measured values on the same testnet asset ranged from 9519 to 14352 depending
-only on who the counterparty was. It is
-taught here because one command covers XLM and every other token identically. When you need a capped
-fee, or an unsigned envelope, use the classic path instead, which takes `--inclusion-fee`:
+`token transfer` pays Soroban resource fees, roughly 9,500 to 14,500 stroops on testnet against 100
+for a classic payment, and takes no fee flag. When you need a capped fee or an unsigned envelope, use
+the classic path, which also rejects `--amount 0`:
 
 ```bash
 stellar tx new payment --source agent-1 --destination <ADDRESS> --amount 10000000 \
@@ -313,33 +222,26 @@ stellar tx new payment --source agent-1 --destination <ADDRESS> --amount 1000000
 
 ## Step 7: Verify what your agent did
 
-In text mode a submitted transfer prints its hash as the last line of stdout, and again on the
-stderr line `ℹ️  Signing transaction: <HASH>`. With `--output json` the hash is in stdout's `tx_hash`
-and nowhere else, because JSON mode writes zero bytes to stderr on success and failure alike.
-`tx fetch result` takes the hash as `--hash`, not a positional argument:
+A submitted transfer prints its hash as the last line of stdout (or in `tx_hash` with
+`--output json`). Look it up with `--hash`:
 
 ```bash
 TX=$(stellar token transfer --id native --from agent-1 --to <ADDRESS> --amount 10000000 --network testnet)
 stellar tx fetch result --hash "$TX" --network testnet
 ```
 
-**An empty `$TX` does not mean the transfer failed.** On a `transaction submission timeout` the
-transaction has already reached the network, stdout can carry zero bytes, and the exit code is 1,
-which is byte-identical to a clean failure and is not one. Never retry a timed-out write. Confirm
-on-chain state first: re-read both balances, take the hash from the stderr signing line, and if you
-have no hash at all, find it through Horizon. Only retry once `tx fetch result` comes back
-"not found".
+**Never retry a timed-out write.** On `transaction submission timeout` the transaction has already
+reached the network, but the command exits 1 and `$TX` can be empty, exactly like a real failure.
+Re-read both balances and take the hash from the stderr line `ℹ️  Signing transaction: <HASH>`
+(text mode only, since JSON mode writes nothing to stderr). Retry only once `tx fetch result`
+returns "not found".
 
-A line starting with `❌` that names a cause (`TxBadAuth`, `TxBadSeq`, a rejected simulation) is a
-real failure and is safe to retry.
-
-For machine-readable output on either command, add `--output json`. Coverage is not uniform across
-the CLI, and only the `stellar token` family returns typed errors. See
-[Output and errors](reference/output-and-errors.md) before you build error handling.
+An error starting with `❌` that names a cause (`TxBadAuth`, `TxBadSeq`, a rejected simulation) is
+a real failure and safe to retry. See [Output and errors](reference/output-and-errors.md) before you
+build error handling, because only the `stellar token` family returns typed errors.
 
 ## Next steps
 
 - [Send tokens](guides/send-tokens.md)
 - [Delegate spending](guides/delegate-spending.md)
 - [Authority model](reference/authority-model.md)
-- [Commands reference](reference/commands.md)
