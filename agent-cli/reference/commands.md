@@ -168,8 +168,9 @@ stellar contract invoke --id "$SAC" --source <IDENTITY> --network <NET> \
 ```
 
 `transfer_from` is the only way to spend a `token approve` allowance. The spender signs, and the
-allowance is reduced by the amount transferred. `--to` needs a trustline for the asset, the same
-precondition an ordinary transfer has; a missing one fails with `Error(Contract, #13)`. `trust`
+allowance is reduced by the amount transferred. For a non-native asset `--to` needs a trustline for it,
+the same precondition an ordinary transfer has, and a missing one fails with `Error(Contract, #13)`;
+native XLM needs none. `trust`
 creates the caller's own trustline for a classic asset, a friendlier alternative to
 `tx new change-trust` for that one purpose.
 

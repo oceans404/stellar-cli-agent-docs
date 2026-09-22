@@ -1863,7 +1863,9 @@ handshake itself runs in your agent's own code, through the `@x402/stellar` pack
 This guide uses `https://stellar.org/x402-demo/api/protected/testnet`, Stellar's own x402 demo
 endpoint on testnet, so you can run the flow end to end before pointing it at the API you actually
 care about. It prices access at 0.01 testnet USDC and sponsors the transaction fee. Every step below
-was run against it with `@x402/stellar` and `@x402/fetch`, which require Node 20 or later.
+was run against it with `@x402/stellar` and `@x402/fetch`. Both declare `engines.node >= 20`, so
+provision Node 20 or later. On Node 18 `npm install` prints `EBADENGINE` for both packages and a
+payment still settles, so the warning is not a stopping point, but do not plan around it.
 
 **Skill:** `workflows/pay-for-apis-x402.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
 of this page.
@@ -1916,14 +1918,31 @@ goes through the `stellar` binary.
      --dest-amount <SMALLEST_UNITS> --send-max <CEILING_IN_STROOPS>
    ```
 
-   A self-addressed path payment is a swap. `--send-max` is your ceiling in stroops and the CLI has
-   no command that quotes a price first, so set it deliberately rather than generously.
+   Both commands print nothing to stdout on success: exit 0 and a single
+   `ℹ️  Signing transaction: <HASH>` line on stderr, with no result code. That is how the whole
+   `tx new` family behaves; see [`tx new` has no machine-readable
+   receipt](../reference/output-and-errors.md#tx-new-has-no-machine-readable-receipt). Re-read the
+   balance to confirm.
+
+   A self-addressed path payment is a swap. Acquire several times the challenge amount, not exactly
+   it: each paid call spends again and step 6 is not replayable, so one client-side mistake sends you
+   back here.
+
+   `--send-max` is your ceiling in stroops, and the CLI has no command that quotes a price, so there
+   is nothing to derive it from. Treat it as the most you are willing to spend rather than an
+   estimate. A fill that would exceed it fails at `Payment(Underfunded)`-style rejection and costs
+   only the base fee, so an honest low ceiling is cheap to retry and a generous one is real money on
+   mainnet. On testnet 0.01 USDC has cost well under 1 XLM.
 
 4. Confirm it can actually pay:
 
    ```bash
    stellar token balance --id USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 --account agent-1 --network testnet
    ```
+
+   That prints the balance in the token's smallest unit, so `10000000` is 1.0 USDC at 7 decimals.
+   Add `--decimal` for the human figure. The challenge's `amount` is in the same smallest unit, so
+   compare the two directly and convert only for display.
 
    Before the trustline exists this exits `1` with `Error(Contract, #13)`,
    `"trustline entry is missing for account"`, rather than returning `0`.
@@ -2681,8 +2700,8 @@ stellar contract invoke --id "$SAC" --source agent-1 --network testnet \
   -- transfer_from --spender agent-1 --from treasury --to <DESTINATION> --amount <SMALLEST_UNIT>
 ```
 
-`--to` needs a trustline for this asset, the same precondition an ordinary transfer has. A missing
-one fails with `Error(Contract, #13)`, the same error covered in
+For a non-native asset, `--to` needs a trustline for it, the same precondition an ordinary transfer
+has, and a missing one fails with `Error(Contract, #13)`. Native XLM needs none, the same error covered in
 [Troubleshooting](../troubleshooting.md).
 
 This is the closest thing the CLI has to a spend limit, and it is genuinely enforced. It also has
@@ -2990,8 +3009,9 @@ stellar contract invoke --id "$SAC" --source <IDENTITY> --network <NET> \
 ```
 
 `transfer_from` is the only way to spend a `token approve` allowance. The spender signs, and the
-allowance is reduced by the amount transferred. `--to` needs a trustline for the asset, the same
-precondition an ordinary transfer has; a missing one fails with `Error(Contract, #13)`. `trust`
+allowance is reduced by the amount transferred. For a non-native asset `--to` needs a trustline for it,
+the same precondition an ordinary transfer has, and a missing one fails with `Error(Contract, #13)`;
+native XLM needs none. `trust`
 creates the caller's own trustline for a classic asset, a friendlier alternative to
 `tx new change-trust` for that one purpose.
 

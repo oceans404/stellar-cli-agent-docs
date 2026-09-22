@@ -73,8 +73,8 @@ stellar contract invoke --id "$SAC" --source agent-1 --network testnet \
   -- transfer_from --spender agent-1 --from treasury --to <DESTINATION> --amount <SMALLEST_UNIT>
 ```
 
-`--to` needs a trustline for this asset, the same precondition an ordinary transfer has. A missing
-one fails with `Error(Contract, #13)`, the same error covered in
+For a non-native asset, `--to` needs a trustline for it, the same precondition an ordinary transfer
+has, and a missing one fails with `Error(Contract, #13)`. Native XLM needs none, the same error covered in
 [Troubleshooting](../troubleshooting.md).
 
 This is the closest thing the CLI has to a spend limit, and it is genuinely enforced. It also has
