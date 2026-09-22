@@ -172,7 +172,7 @@ error-handling logic explicitly rather than assuming every command behaves like 
 
 `stellar contract build --image <IMAGE>` shells out to the container engine, and `--pull` makes it
 pull first. The engine writes pull progress to its own stdout, and the CLI redirects that to stderr
-so the CLI's stdout stays clean. Measured on `f1adb979` against Docker 29.8.0, stdout was zero bytes
+so the CLI's stdout stays clean. Measured against Docker 29.8.0, stdout was zero bytes
 in every case below.
 
 ```console

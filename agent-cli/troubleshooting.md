@@ -145,9 +145,12 @@ Event log (newest first):
 ```
 
 This is the native-asset (XLM) version of the same underlying problem: the destination account does
-not exist on the network. It is what you get after `stellar keys generate <NAME> --network testnet`
-without `--fund`. The key is saved locally, but the account does not exist on-chain until something
-funds it.
+not exist on the network. Three different situations produce it. You ran
+`stellar keys generate <NAME> --network testnet` without `--fund`, so the key is saved locally but
+the account does not exist on-chain. You are querying the wrong network for an account that does
+exist. Or the account existed and was merged away, which leaves the same code behind: after a
+successful `account-merge`, a balance read on the source address returns `#6`, and that is the
+cheapest confirmation the merge landed.
 
 Do not confuse this with `#13` above. A classic asset reports a missing account as a missing
 trustline (`#13`), because trustlines are asset-specific sub-entries of an account. The native
@@ -194,6 +197,14 @@ stellar message sign "<MESSAGE>" --sign-with-key <NAME>
 ```
 
 ## Accounts
+
+### A successful account merge prints nothing
+
+`tx new account-merge` on success exits 0, writes an empty stdout, and emits one stderr line,
+`ℹ️  Signing transaction: <HASH>`. There is no success block and no explorer link, unlike every
+other submit. Silence here is success, not a hang. Confirm it two ways: a balance read on the source
+address returns `Error(Contract, #6)`, and `stellar tx fetch result --hash <HASH>` reports
+`account_merge` with the swept amount, which is the only place that figure appears.
 
 ### Account merge refused
 

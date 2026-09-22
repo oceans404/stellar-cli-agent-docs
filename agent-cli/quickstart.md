@@ -57,8 +57,8 @@ and shadow, or be shadowed by, your release install depending on PATH order.
 alongside it and the two differ:
 
 ```bash
-~/.stellar-main/bin/stellar --version    # stellar 28.0.0 (f1adb979...)  main
-stellar --version                        # stellar 28.0.0 (300aaf69...)  release
+~/.stellar-main/bin/stellar --version    # stellar 28.0.0 (<commit>...)  main
+stellar --version                        # stellar 28.0.0 (<commit>...)  release
 ```
 
 If you do not know which hash is which, ask for a subcommand only the main build has:
@@ -288,7 +288,7 @@ An `--amount` below the smallest unit is not rejected. `--amount 1` submits 0.00
 0, so a missing multiplier looks like a success.
 
 `--amount 0` is the sharper case: it exits 0, returns a transaction hash, lands as `tx_success`, and
-charges the full fee while moving nothing. Measured on `f1adb979`, the source account fell by exactly
+charges the full fee while moving nothing. Measured on a `main` build, the source account fell by exactly
 13745 stroops and no value changed hands. `tx new payment --amount 0` rejects the same input with
 `Payment(Malformed)` and exit 1, so the classic path has a guard the Soroban path does not.
 

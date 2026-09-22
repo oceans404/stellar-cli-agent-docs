@@ -233,8 +233,8 @@ and shadow, or be shadowed by, your release install depending on PATH order.
 alongside it and the two differ:
 
 ```bash
-~/.stellar-main/bin/stellar --version    # stellar 28.0.0 (f1adb979...)  main
-stellar --version                        # stellar 28.0.0 (300aaf69...)  release
+~/.stellar-main/bin/stellar --version    # stellar 28.0.0 (<commit>...)  main
+stellar --version                        # stellar 28.0.0 (<commit>...)  release
 ```
 
 If you do not know which hash is which, ask for a subcommand only the main build has:
@@ -464,7 +464,7 @@ An `--amount` below the smallest unit is not rejected. `--amount 1` submits 0.00
 0, so a missing multiplier looks like a success.
 
 `--amount 0` is the sharper case: it exits 0, returns a transaction hash, lands as `tx_success`, and
-charges the full fee while moving nothing. Measured on `f1adb979`, the source account fell by exactly
+charges the full fee while moving nothing. Measured on a `main` build, the source account fell by exactly
 13745 stroops and no value changed hands. `tx new payment --amount 0` rejects the same input with
 `Payment(Malformed)` and exit 1, so the classic path has a guard the Soroban path does not.
 
@@ -567,7 +567,7 @@ a contract developer's agent: prefer `network use` and `keys use` over repeating
 IDs in aliases rather than shell variables, use `--send=no` for reads, remember that storage entries
 have a TTL. It covers `network`, `keys`, `contract`, `container`, and `env`, and nothing else.
 
-Measured against the `main` build at commit `f1adb979`, `stellar skill` contains zero mentions of
+Measured against a `main` build, `stellar skill` contains zero mentions of
 `stellar token`, `tx new`, SEP-53 message signing, `--build-only`, `approve`, `allowance`, or
 mainnet. Every one of those is something an agent handling money has to get right, and all of them
 are in this package. The two are complementary, not redundant: read `stellar skill` for how the CLI
@@ -1144,7 +1144,19 @@ show me the allowance.
      --amount <AMOUNT> --expiration-ledger <LEDGER> --network <NETWORK>
    ```
 
-5. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
+5. Prove the cap binds before you trust it. Add `--send no` to simulate without submitting, so the
+   probe costs nothing:
+
+   ```bash
+   stellar contract invoke --id <TOKEN> --source-account <SPENDER> --send no --network <NETWORK> \
+     -- transfer_from --spender <SPENDER> --from <OWNER> --to <DEST> --amount <OVER_THE_CAP>
+   ```
+
+   It fails at simulation with `Error(Contract, #9)` and data `["not enough allowance to spend",
+   <remaining>, <requested>]`, remaining before requested, and nothing reaches the network. Branch
+   on the message text rather than the code: `#9` is not unique to an over-cap draw.
+
+6. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
    stored. Note what this step cannot do: `approve` to an address that was never funded succeeds,
    and every post-hoc check then confirms the typo as though it were correct. `token allowance`,
    `contract read --durability temporary`, `tx fetch events`, and a Horizon scan all report such a
@@ -1242,11 +1254,18 @@ That returns the amount and the deadline together, for example
 `{"amount":"80000000","live_until_ledger":4627378}`. Note `--durability temporary`: an allowance is
 not persistent storage.
 
+That example is the value only. The command prints a four-field CSV row with no `--output` flag: the
+key, the value as doubled-quote-escaped JSON, the last-modified ledger, and the entry TTL. Passing
+`--output json` also returns CSV, with the ScVals expanded to multi-line XDR-JSON, so `| jq` fails
+either way.
+
 **Do not read this as an audit of what the agent can spend.** The entry is not evicted when the
-deadline passes. `live_until_ledger` is the allowance's own deadline; the ledger entry carries a
-separate TTL that runs further out, measured at 718 ledgers beyond it in one case. Past the deadline
-this command still returns exit 0 and the original `amount`, for authority the network will not
-honor for one stroop.
+deadline passes. `live_until_ledger` is the allowance's own deadline. The fourth column is the
+ledger entry's own TTL, which is set when the entry is written and has nothing to do with the
+deadline you chose, so how far it outlives that deadline is not a fixed quantity and no figure for
+it is worth quoting. Past the deadline this command still returns exit 0 and the original `amount`,
+for authority the network will not honor for one stroop. After a revoke the two read paths agree
+instead, showing `amount` 0 and `live_until_ledger` 0.
 
 `stellar token allowance` returns `0` correctly at that same moment. Use it, not `contract read`, to
 answer what an agent may still spend.
@@ -1844,7 +1863,7 @@ handshake itself runs in your agent's own code, through the `@x402/stellar` pack
 This guide uses `https://stellar.org/x402-demo/api/protected/testnet`, Stellar's own x402 demo
 endpoint on testnet, so you can run the flow end to end before pointing it at the API you actually
 care about. It prices access at 0.01 testnet USDC and sponsors the transaction fee. Every step below
-was run against it with `@x402/stellar` and `@x402/fetch` at 2.25.0.
+was run against it with `@x402/stellar` and `@x402/fetch`, which require Node 20 or later.
 
 **Skill:** `workflows/pay-for-apis-x402.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
 of this page.
@@ -1871,18 +1890,50 @@ goes through the `stellar` binary.
    stellar keys generate agent-1 --network testnet --fund
    ```
 
-2. Confirm it can actually pay before you attempt a request:
+2. Read the challenge before paying anything. The terms arrive as base64 JSON in the
+   `payment-required` **response header**, not in the body, which is literally `{}`:
+
+   ```bash
+   curl -s -D - -o /dev/null <URL> \
+     | grep -i '^payment-required:' | sed 's/^payment-required: //' | tr -d '\r' \
+     | base64 -d | python3 -m json.tool
+   ```
+
+   It names the asset as a `C…` address, the amount in the token's smallest unit, the recipient, and
+   the network as a CAIP-2 string such as `stellar:testnet`, which is not the CLI's `--network`
+   value. Read the decimals with `stellar token decimals --id <ASSET>` before converting the amount:
+   do not assume 7.
+
+3. Get the asset into the account. A `keys generate --fund` identity holds XLM and nothing else, so
+   this step is not optional and it is the only hard one. `stellar token name --id <C_ADDRESS>`
+   returns the `CODE:ISSUER` form you need for the next two commands. Open the trustline, then
+   acquire the asset:
+
+   ```bash
+   stellar tx new change-trust --source-account agent-1 --line <CODE:ISSUER> --network testnet
+   stellar tx new path-payment-strict-receive --source-account agent-1 --network testnet \
+     --send-asset native --dest-asset <CODE:ISSUER> --destination agent-1 \
+     --dest-amount <SMALLEST_UNITS> --send-max <CEILING_IN_STROOPS>
+   ```
+
+   A self-addressed path payment is a swap. `--send-max` is your ceiling in stroops and the CLI has
+   no command that quotes a price first, so set it deliberately rather than generously.
+
+4. Confirm it can actually pay:
 
    ```bash
    stellar token balance --id USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 --account agent-1 --network testnet
    ```
+
+   Before the trustline exists this exits `1` with `Error(Contract, #13)`,
+   `"trustline entry is missing for account"`, rather than returning `0`.
 
    The challenge names the asset as a `C…` contract address, not as `CODE:ISSUER`. Both name the
    same asset: `stellar contract id asset --asset USDC:GBBD47IF… --network testnet` resolves to
    `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`, which is what the demo endpoint asks
    for. Compare that way rather than assuming a mismatch.
 
-3. In your agent's code, install the client packages and wrap `fetch` with the Stellar scheme:
+5. In your agent's code, install the client packages and wrap `fetch` with the Stellar scheme:
 
    ```bash
    npm install @x402/stellar @x402/fetch
@@ -1913,7 +1964,7 @@ goes through the `stellar` binary.
    drive that loop yourself. If you need to control it, `new x402Client().register("stellar:*", new
    ExactStellarScheme(signer))` from `@x402/core/client` is the lower-level equivalent.
 
-4. Make the request. Read the settlement hash off the `payment-response` response header, not the
+6. Make the request. Read the settlement hash off the `payment-response` response header, not the
    body:
 
    ```ts
@@ -1940,7 +1991,7 @@ goes through the `stellar` binary.
    Capture the body on the first request. Each call pays again: a paid response is not replayable,
    so re-running the script to see output you truncated costs the amount a second time.
 
-5. Confirm settlement on-chain with the hash from that header. `tx fetch result` takes it as
+7. Confirm settlement on-chain with the hash from that header. `tx fetch result` takes it as
    `--hash`, not a positional argument:
 
    ```bash
@@ -1952,9 +2003,17 @@ goes through the `stellar` binary.
    `tx_fee_bump_inner_success` and a successful `invoke_host_function`. That zero is the facilitator
    paying the fee, not a free transaction.
 
-   Then re-read the balance from step 2. It should be down by exactly the challenge's `amount`, and
-   the native balance unchanged when `areFeesSponsored` is true. That pair is the cleanest proof
-   both that you paid what you expected and that the sponsorship held.
+   That result proves an invocation succeeded. It does not prove what you paid or who you paid,
+   because it carries no address and no amount. For that, read the events:
+
+   ```bash
+   stellar tx fetch events --hash <TX_HASH> --network testnet
+   ```
+
+   The `transfer` event names the payer, the recipient, the asset, and the amount as an `i128`.
+   Check it against the challenge you read in step 2. Then re-read the balance from step 4: it
+   should be down by exactly the challenge's `amount`, with the native balance unchanged when
+   `areFeesSponsored` is true.
 
 ## Facilitators
 
@@ -2769,7 +2828,7 @@ keywords: [Stellar, CLI, reference, commands, stellar token, stellar tx, stellar
 # Commands reference
 
 Every command below was run with `--help` against `stellar` 28.0.0 on the local machine. Two builds
-were probed: the 28.0.0 release at commit `300aaf69`, and a build from `main` at commit `f1adb979`.
+were probed: the 28.0.0 release, and a build from `main`.
 Where they differ, the row says so. Flags shared by many commands (global, RPC, transaction, and
 signing options) are documented once in their own sections and referenced from each command family
 rather than repeated per command.
@@ -4046,7 +4105,7 @@ error-handling logic explicitly rather than assuming every command behaves like 
 
 `stellar contract build --image <IMAGE>` shells out to the container engine, and `--pull` makes it
 pull first. The engine writes pull progress to its own stdout, and the CLI redirects that to stderr
-so the CLI's stdout stays clean. Measured on `f1adb979` against Docker 29.8.0, stdout was zero bytes
+so the CLI's stdout stays clean. Measured against Docker 29.8.0, stdout was zero bytes
 in every case below.
 
 ```console
@@ -4620,9 +4679,12 @@ Event log (newest first):
 ```
 
 This is the native-asset (XLM) version of the same underlying problem: the destination account does
-not exist on the network. It is what you get after `stellar keys generate <NAME> --network testnet`
-without `--fund`. The key is saved locally, but the account does not exist on-chain until something
-funds it.
+not exist on the network. Three different situations produce it. You ran
+`stellar keys generate <NAME> --network testnet` without `--fund`, so the key is saved locally but
+the account does not exist on-chain. You are querying the wrong network for an account that does
+exist. Or the account existed and was merged away, which leaves the same code behind: after a
+successful `account-merge`, a balance read on the source address returns `#6`, and that is the
+cheapest confirmation the merge landed.
 
 Do not confuse this with `#13` above. A classic asset reports a missing account as a missing
 trustline (`#13`), because trustlines are asset-specific sub-entries of an account. The native
@@ -4669,6 +4731,14 @@ stellar message sign "<MESSAGE>" --sign-with-key <NAME>
 ```
 
 ## Accounts
+
+### A successful account merge prints nothing
+
+`tx new account-merge` on success exits 0, writes an empty stdout, and emits one stderr line,
+`ℹ️  Signing transaction: <HASH>`. There is no success block and no explorer link, unlike every
+other submit. Silence here is success, not a hang. Confirm it two ways: a balance read on the source
+address returns `Error(Contract, #6)`, and `stellar tx fetch result --hash <HASH>` reports
+`account_merge` with the swept amount, which is the only place that figure appears.
 
 ### Account merge refused
 

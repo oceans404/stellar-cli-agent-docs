@@ -221,7 +221,19 @@ show me the allowance.
      --amount <AMOUNT> --expiration-ledger <LEDGER> --network <NETWORK>
    ```
 
-5. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
+5. Prove the cap binds before you trust it. Add `--send no` to simulate without submitting, so the
+   probe costs nothing:
+
+   ```bash
+   stellar contract invoke --id <TOKEN> --source-account <SPENDER> --send no --network <NETWORK> \
+     -- transfer_from --spender <SPENDER> --from <OWNER> --to <DEST> --amount <OVER_THE_CAP>
+   ```
+
+   It fails at simulation with `Error(Contract, #9)` and data `["not enough allowance to spend",
+   <remaining>, <requested>]`, remaining before requested, and nothing reaches the network. Branch
+   on the message text rather than the code: `#9` is not unique to an over-cap draw.
+
+6. Confirm what is actually granted. Do not trust what you just sent. Read back what the network
    stored. Note what this step cannot do: `approve` to an address that was never funded succeeds,
    and every post-hoc check then confirms the typo as though it were correct. `token allowance`,
    `contract read --durability temporary`, `tx fetch events`, and a Horizon scan all report such a
@@ -319,11 +331,18 @@ That returns the amount and the deadline together, for example
 `{"amount":"80000000","live_until_ledger":4627378}`. Note `--durability temporary`: an allowance is
 not persistent storage.
 
+That example is the value only. The command prints a four-field CSV row with no `--output` flag: the
+key, the value as doubled-quote-escaped JSON, the last-modified ledger, and the entry TTL. Passing
+`--output json` also returns CSV, with the ScVals expanded to multi-line XDR-JSON, so `| jq` fails
+either way.
+
 **Do not read this as an audit of what the agent can spend.** The entry is not evicted when the
-deadline passes. `live_until_ledger` is the allowance's own deadline; the ledger entry carries a
-separate TTL that runs further out, measured at 718 ledgers beyond it in one case. Past the deadline
-this command still returns exit 0 and the original `amount`, for authority the network will not
-honor for one stroop.
+deadline passes. `live_until_ledger` is the allowance's own deadline. The fourth column is the
+ledger entry's own TTL, which is set when the entry is written and has nothing to do with the
+deadline you chose, so how far it outlives that deadline is not a fixed quantity and no figure for
+it is worth quoting. Past the deadline this command still returns exit 0 and the original `amount`,
+for authority the network will not honor for one stroop. After a revoke the two read paths agree
+instead, showing `amount` 0 and `live_until_ledger` 0.
 
 `stellar token allowance` returns `0` correctly at that same moment. Use it, not `contract read`, to
 answer what an agent may still spend.

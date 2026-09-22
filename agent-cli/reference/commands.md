@@ -6,7 +6,7 @@ keywords: [Stellar, CLI, reference, commands, stellar token, stellar tx, stellar
 # Commands reference
 
 Every command below was run with `--help` against `stellar` 28.0.0 on the local machine. Two builds
-were probed: the 28.0.0 release at commit `300aaf69`, and a build from `main` at commit `f1adb979`.
+were probed: the 28.0.0 release, and a build from `main`.
 Where they differ, the row says so. Flags shared by many commands (global, RPC, transaction, and
 signing options) are documented once in their own sections and referenced from each command family
 rather than repeated per command.

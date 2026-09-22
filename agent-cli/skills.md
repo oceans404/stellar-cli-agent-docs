@@ -41,7 +41,7 @@ a contract developer's agent: prefer `network use` and `keys use` over repeating
 IDs in aliases rather than shell variables, use `--send=no` for reads, remember that storage entries
 have a TTL. It covers `network`, `keys`, `contract`, `container`, and `env`, and nothing else.
 
-Measured against the `main` build at commit `f1adb979`, `stellar skill` contains zero mentions of
+Measured against a `main` build, `stellar skill` contains zero mentions of
 `stellar token`, `tx new`, SEP-53 message signing, `--build-only`, `approve`, `allowance`, or
 mainnet. Every one of those is something an agent handling money has to get right, and all of them
 are in this package. The two are complementary, not redundant: read `stellar skill` for how the CLI

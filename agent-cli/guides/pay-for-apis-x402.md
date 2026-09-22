@@ -19,7 +19,7 @@ handshake itself runs in your agent's own code, through the `@x402/stellar` pack
 This guide uses `https://stellar.org/x402-demo/api/protected/testnet`, Stellar's own x402 demo
 endpoint on testnet, so you can run the flow end to end before pointing it at the API you actually
 care about. It prices access at 0.01 testnet USDC and sponsors the transaction fee. Every step below
-was run against it with `@x402/stellar` and `@x402/fetch` at 2.25.0.
+was run against it with `@x402/stellar` and `@x402/fetch`, which require Node 20 or later.
 
 **Skill:** `workflows/pay-for-apis-x402.md` in the [Stellar CLI skill package](../skills.md) is the agent-facing version
 of this page.
@@ -46,18 +46,50 @@ goes through the `stellar` binary.
    stellar keys generate agent-1 --network testnet --fund
    ```
 
-2. Confirm it can actually pay before you attempt a request:
+2. Read the challenge before paying anything. The terms arrive as base64 JSON in the
+   `payment-required` **response header**, not in the body, which is literally `{}`:
+
+   ```bash
+   curl -s -D - -o /dev/null <URL> \
+     | grep -i '^payment-required:' | sed 's/^payment-required: //' | tr -d '\r' \
+     | base64 -d | python3 -m json.tool
+   ```
+
+   It names the asset as a `C…` address, the amount in the token's smallest unit, the recipient, and
+   the network as a CAIP-2 string such as `stellar:testnet`, which is not the CLI's `--network`
+   value. Read the decimals with `stellar token decimals --id <ASSET>` before converting the amount:
+   do not assume 7.
+
+3. Get the asset into the account. A `keys generate --fund` identity holds XLM and nothing else, so
+   this step is not optional and it is the only hard one. `stellar token name --id <C_ADDRESS>`
+   returns the `CODE:ISSUER` form you need for the next two commands. Open the trustline, then
+   acquire the asset:
+
+   ```bash
+   stellar tx new change-trust --source-account agent-1 --line <CODE:ISSUER> --network testnet
+   stellar tx new path-payment-strict-receive --source-account agent-1 --network testnet \
+     --send-asset native --dest-asset <CODE:ISSUER> --destination agent-1 \
+     --dest-amount <SMALLEST_UNITS> --send-max <CEILING_IN_STROOPS>
+   ```
+
+   A self-addressed path payment is a swap. `--send-max` is your ceiling in stroops and the CLI has
+   no command that quotes a price first, so set it deliberately rather than generously.
+
+4. Confirm it can actually pay:
 
    ```bash
    stellar token balance --id USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 --account agent-1 --network testnet
    ```
+
+   Before the trustline exists this exits `1` with `Error(Contract, #13)`,
+   `"trustline entry is missing for account"`, rather than returning `0`.
 
    The challenge names the asset as a `C…` contract address, not as `CODE:ISSUER`. Both name the
    same asset: `stellar contract id asset --asset USDC:GBBD47IF… --network testnet` resolves to
    `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`, which is what the demo endpoint asks
    for. Compare that way rather than assuming a mismatch.
 
-3. In your agent's code, install the client packages and wrap `fetch` with the Stellar scheme:
+5. In your agent's code, install the client packages and wrap `fetch` with the Stellar scheme:
 
    ```bash
    npm install @x402/stellar @x402/fetch
@@ -88,7 +120,7 @@ goes through the `stellar` binary.
    drive that loop yourself. If you need to control it, `new x402Client().register("stellar:*", new
    ExactStellarScheme(signer))` from `@x402/core/client` is the lower-level equivalent.
 
-4. Make the request. Read the settlement hash off the `payment-response` response header, not the
+6. Make the request. Read the settlement hash off the `payment-response` response header, not the
    body:
 
    ```ts
@@ -115,7 +147,7 @@ goes through the `stellar` binary.
    Capture the body on the first request. Each call pays again: a paid response is not replayable,
    so re-running the script to see output you truncated costs the amount a second time.
 
-5. Confirm settlement on-chain with the hash from that header. `tx fetch result` takes it as
+7. Confirm settlement on-chain with the hash from that header. `tx fetch result` takes it as
    `--hash`, not a positional argument:
 
    ```bash
@@ -127,9 +159,17 @@ goes through the `stellar` binary.
    `tx_fee_bump_inner_success` and a successful `invoke_host_function`. That zero is the facilitator
    paying the fee, not a free transaction.
 
-   Then re-read the balance from step 2. It should be down by exactly the challenge's `amount`, and
-   the native balance unchanged when `areFeesSponsored` is true. That pair is the cleanest proof
-   both that you paid what you expected and that the sponsorship held.
+   That result proves an invocation succeeded. It does not prove what you paid or who you paid,
+   because it carries no address and no amount. For that, read the events:
+
+   ```bash
+   stellar tx fetch events --hash <TX_HASH> --network testnet
+   ```
+
+   The `transfer` event names the payer, the recipient, the asset, and the amount as an `i128`.
+   Check it against the challenge you read in step 2. Then re-read the balance from step 4: it
+   should be down by exactly the challenge's `amount`, with the native balance unchanged when
+   `areFeesSponsored` is true.
 
 ## Facilitators
 
